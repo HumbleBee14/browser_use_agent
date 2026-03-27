@@ -195,10 +195,13 @@ async def extract_text(page: Page, selector: str, element_map: dict[str, str] | 
         locator, strategy = await _resolve_element(page, selector, element_map)
         if locator:
             text = await locator.inner_text(timeout=5000)
+            truncated = text[:2000]
+            if len(text) > 2000:
+                truncated += f"\n... [truncated, full text was {len(text)} chars]"
             return ActionResult(
                 success=True,
                 description=f"Extracted {len(text)} chars (via {strategy})",
-                extracted_text=text[:2000],
+                extracted_text=truncated,
             )
 
         return ActionResult(

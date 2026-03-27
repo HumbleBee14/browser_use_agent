@@ -119,6 +119,7 @@ async def run(
             output_mgr.log_step(StepRecord(
                 step=step, action="no_tool_call", result="LLM returned no tool call", url=page.url,
             ))
+            consecutive_failures += 1
             continue
 
         try:
