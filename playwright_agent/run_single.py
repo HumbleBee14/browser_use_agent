@@ -49,9 +49,20 @@ async def run(args):
         headless=config.HEADLESS,
         args=["--disable-features=WebContentsForceDark"],
     )
-    ctx = await browser_instance.new_context()
+    # Load auth state if task spec has auth_profile
+    context_opts = {}
+    if task_spec.auth_profile:
+        auth_path = Path(task_spec.auth_profile)
+        if auth_path.exists():
+            context_opts["storage_state"] = str(auth_path)
+            console.print(f"  Auth:   {auth_path}")
+
+    ctx = await browser_instance.new_context(
+        viewport={"width": 1280, "height": 900},
+        color_scheme="light",
+        **context_opts,
+    )
     page = await ctx.new_page()
-    await page.set_viewport_size({"width": 1280, "height": 900})
     await page.emulate_media(color_scheme="light")
 
     try:

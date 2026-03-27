@@ -28,7 +28,7 @@ SEMANTIC_ROLES = frozenset({
     "heading", "table", "row", "cell", "listitem", "combobox", "option",
     "status", "alert", "img", "switch", "slider", "spinbutton", "searchbox",
     "treeitem", "menuitemcheckbox", "menuitemradio", "text", "paragraph",
-    "region", "article", "main", "navigation",
+    "region", "article", "main",
 })
 
 INTERACTIVE_ROLES = frozenset({

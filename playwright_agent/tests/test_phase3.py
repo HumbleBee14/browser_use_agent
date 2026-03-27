@@ -138,13 +138,12 @@ def test_action_parsing_valid():
     assert action.selector == "3"
 
 
-def test_action_parsing_rejects_unknown_fields():
-    """Unknown fields should raise ValidationError."""
-    try:
-        AgentAction(action="click", selector="3", extra_field="bad")
-        assert False, "Should have raised"
-    except Exception:
-        pass  # Pydantic rejects extra fields
+def test_action_parsing_ignores_extra_fields():
+    """Pydantic v2 silently drops unknown fields — correct for LLM output."""
+    action = AgentAction(action="click", selector="3", extra_field="ignored")
+    assert action.action == "click"
+    assert action.selector == "3"
+    assert not hasattr(action, "extra_field")
 
 
 def test_action_parsing_rejects_bad_action():

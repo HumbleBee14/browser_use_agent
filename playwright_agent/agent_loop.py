@@ -30,7 +30,7 @@ from models.actions import (
     action_tool_schema,
 )
 from models.task import TaskSpec, SampleInput
-from tools import browser, output as output_tools
+from tools import browser
 from tools.output import OutputManager
 
 
