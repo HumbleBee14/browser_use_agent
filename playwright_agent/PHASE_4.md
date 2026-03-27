@@ -96,7 +96,7 @@ User: python main.py --task tasks/github_profile.json --input samples.csv --conc
 main.py (orchestrator)
   → loads task spec + samples CSV
   → skips already-completed samples (idempotent)
-  → launches 5 parallel workers via asyncio.gather + Semaphore
+  → launches N parallel workers via asyncio.gather + Semaphore
 
 worker.py (per sample)
   → creates isolated BrowserContext
@@ -117,6 +117,42 @@ tools/output.py (evidence)
 main.py (merge)
   → reads all result.json → combined.csv (sorted)
   → prints summary table
+```
+
+---
+
+## How Parallelism Works
+
+**Single process, async I/O.** All workers run in one Python process on one event loop via `asyncio.gather()`. This is not threading or multiprocessing.
+
+**What runs in parallel:**
+- Page loads (Worker A's page loads while Worker B's LLM call runs)
+- LLM API calls (each worker awaits its own response independently)
+- Screenshot captures + file writes
+- Essentially all I/O — which is 99% of what the agent does
+
+**What's serialized:**
+- Per-domain rate limiter (0.5s between GitHub requests) — prevents getting blocked
+- That's it
+
+**Why asyncio, not multiprocessing:**
+
+| | asyncio (ours) | multiprocessing |
+|---|---|---|
+| Browsers | N contexts in 1 Chromium | N separate Chromium processes |
+| Memory | ~500MB total | ~500MB × N |
+| Shared state | Simple (same process) | Requires IPC |
+| Playwright support | Native (async API) | Not supported |
+
+**Proven:** 20 samples at concurrency 5 completed in 239s (~12s/sample average). Nearly 5x faster than sequential. Each worker's I/O waits become other workers' execution time.
+
+```
+Time →
+Worker 1: [goto]----[page load]........[LLM call]........[screenshot][extract][done]
+Worker 2:      [goto]----[page load]........[LLM call]........[screenshot][done]
+Worker 3:           [goto]----[page load]........[LLM call]........[done]
+                         ↑                    ↑
+                   These waits overlap — that's the parallelism
 ```
 
 ---
