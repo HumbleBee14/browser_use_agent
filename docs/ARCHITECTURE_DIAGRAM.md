@@ -8,7 +8,7 @@ Visual explanations of how the application works, for demos and code reviews.
 
 ```mermaid
 flowchart TD
-    A["python main.py --task tasks/commits.yaml"] --> B[Load Task YAML]
+    A["python main.py --task tasks/andera_commit_audit.yaml"] --> B[Load Task YAML]
     B --> C[Load Samples from CSV]
     C --> D{--dry-run?}
     D -->|Yes| E[Show Config Tables & Exit]
@@ -75,9 +75,9 @@ flowchart TD
     REG --> GT["GraphTraversalStrategy<br/>Follow links across pages"]
     REG --> FF["FormFillStrategy<br/>Fill → Submit → Capture"]
 
-    SP --> |"demo.yaml<br/>github_issues.yaml"| AGENT[EvidenceAgent]
-    GT --> |"github_commits.yaml"| AGENT
-    FF --> |"form_fill_demo.yaml"| AGENT
+    SP --> |"demo.yaml<br/>github_issues.yaml<br/>andera_ticket_extraction.yaml"| AGENT[EvidenceAgent]
+    GT --> |"github_commits.yaml<br/>andera_commit_audit.yaml<br/>andera_linkedin_enrichment.yaml<br/>andera_blame_review.yaml"| AGENT
+    FF --> |"form_fill_demo.yaml<br/>andera_form_download.yaml"| AGENT
 
     AGENT --> RESULT[SampleResult]
 
@@ -133,14 +133,14 @@ sequenceDiagram
 INPUT                          PROCESSING                      OUTPUT
 ─────                          ──────────                      ──────
 
-tasks/commits.yaml             ┌─────────────┐
+tasks/andera_commit_audit.yaml ┌─────────────┐
   ├─ name                      │  TaskConfig  │
   ├─ strategy ─────────────────│  (Pydantic)  │
   ├─ instructions              └──────┬───────┘
   ├─ output_fields                    │
   └─ checkpoints                      │
                                       ▼
-tasks/inputs/commits.csv       ┌─────────────┐        evidence/run_TIMESTAMP/
+tasks/inputs/andera_commits.csv┌─────────────┐        evidence/run_TIMESTAMP/
   ├─ sample_id                 │  Orchestrator│        ├─ results.csv
   └─ url ──────────────────────│  (asyncio)   │────────├─ run_summary.json
                                └──────┬───────┘        └─ samples/

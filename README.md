@@ -108,8 +108,8 @@ cp .env.example .env
 
 ### Dry Run — Validate config instantly (no browser, no LLM, $0)
 ```bash
-python main.py --task tasks/github_commits.yaml --dry-run
-python main.py --task tasks/form_fill_demo.yaml --dry-run
+python main.py --task tasks/andera_commit_audit.yaml --dry-run
+python main.py --task tasks/andera_form_download.yaml --dry-run
 ```
 
 ### Single Sample
@@ -120,7 +120,7 @@ python main.py --task tasks/github_issues.yaml \
 
 ### Batch from CSV
 ```bash
-python main.py --task tasks/github_commits.yaml --max-concurrent 2
+python main.py --task tasks/andera_commit_audit.yaml --max-concurrent 2
 ```
 
 ### All Options
@@ -171,10 +171,29 @@ Every extracted field traces back to its source:
 
 | Task | Strategy | What It Does |
 |------|----------|-------------|
-| `tasks/github_commits.yaml` | graph_traversal | Audit commits: navigate commit → PR → review, extract fields, judge review compliance |
-| `tasks/github_issues.yaml` | single_page | Extract issue details: number, title, state, author, labels, dates |
-| `tasks/form_fill_demo.yaml` | form_fill | Fill forms with CSV data, submit, capture before/after screenshots |
+| `tasks/andera_commit_audit.yaml` | graph_traversal | Deep commit audit: commit → PR → checks/CI → linked ticket, with review judgment |
+| `tasks/andera_linkedin_enrichment.yaml` | graph_traversal | Search for a person's LinkedIn, extract profile fields, mark ambiguous/login-wall cases honestly |
+| `tasks/andera_blame_review.yaml` | graph_traversal | File view → blame view → recent change assessment with materiality judgment |
+| `tasks/andera_form_download.yaml` | form_fill | Fill a form, submit it, capture result, and optionally download artifacts |
+| `tasks/andera_ticket_extraction.yaml` | single_page | Screenshot a ticket page and extract assignee/status/due-date style fields |
+| `tasks/github_commits.yaml` | graph_traversal | Earlier GitHub commit audit demo task |
+| `tasks/github_issues.yaml` | single_page | Earlier GitHub issue extraction demo task |
+| `tasks/form_fill_demo.yaml` | form_fill | Earlier public-form demo task |
 | `tasks/demo.yaml` | single_page | Simple page capture: screenshot + title extraction |
+
+### Current Runtime Status
+
+The Andera task set is now both config-complete and partially runtime-validated:
+
+| Task | Latest Runtime Result | Notes |
+|------|------------------------|-------|
+| `andera_form_download.yaml` | `completed` | Strongest end-to-end result so far; full form lifecycle captured |
+| `andera_linkedin_enrichment.yaml` | `needs_review` | Correctly found profile and handled LinkedIn auth wall honestly |
+| `andera_ticket_extraction.yaml` | `needs_review` | Fields extracted correctly; timed out under current 60s limit |
+| `andera_commit_audit.yaml` | `needs_review` | Navigated commit → PR → checks, but timed out before final packaging |
+| `andera_blame_review.yaml` | `needs_review` | Reached file + blame evidence capture, but timed out before final field recording |
+
+The main remaining issue is runtime tuning on slow GitHub workflows, not missing architecture.
 
 ---
 

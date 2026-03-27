@@ -631,58 +631,40 @@ LLM Providers: 4 (anthropic, openai, gemini, browser_use)
 
 ## Phase 5: Andera Coverage — All 5 Task Families
 
-**Goal:** Turn the framework into a credible Andera submission by implementing every task family from the Andera project brief. No new architecture — just YAML task definitions proving the engine covers their actual requirements.
+**Goal:** Turn the framework into a credible Andera submission by implementing every task family from the Andera project brief, then validating them on the existing engine.
 
 ### What Was Built
 
-All 5 task families from `Andera_Project.md` are now implemented as YAML task definitions with sample input CSVs. **Zero code changes to the engine.**
+All 5 task families from `Andera_Project.md` were added as YAML task definitions with sample input CSVs. **Zero code changes to the engine.**
 
 #### Task 1: Full Commit Audit (`andera_commit_audit.yaml`)
 - **Andera requirement:** "Go through 60 commits, screenshot each, open checks, identify CI passes/fails, find Jira links, take screenshots."
 - **Strategy:** `graph_traversal` (commit → PR → checks → CI → Jira)
 - **Output fields (12):** commit_hash, commit_url, pr_creator, pr_approver, pr_merger, commit_date, commit_message, files_changed, checks_passed, checks_failed, failed_check_notes, jira_ticket_link
-- **Checkpoints (4):** commit_page, PR page, checks status, linked ticket
 - **Judgment:** "Was this commit properly reviewed and all checks passing before merge?"
-- **How it maps:** This is the deepest task — the agent navigates 3-4 pages per sample, extracts reviewer/merger identity, CI status, and Jira links. The CSV output has exactly the columns Andera specified: who created, who approved, who merged, failed check notes, Jira link.
 
 #### Task 2: LinkedIn Enrichment (`andera_linkedin_enrichment.yaml`)
 - **Andera requirement:** "CSV of names from an event. Go through each, find their LinkedIn. Add columns: LinkedIn URL, School, Current company, Tenure."
-- **Strategy:** `graph_traversal` (Google search → LinkedIn profile → extract)
+- **Strategy:** `graph_traversal` (Google search → candidate → profile / auth wall)
 - **Output fields (4):** linkedin_url, school, current_company, tenure
-- **Key design:** If identity is ambiguous (common names), the agent sets fields to "ambiguous" and marks `needs_review` instead of guessing. This matches the Andera brief's accuracy-first priority.
-- **Limitation:** LinkedIn may require login for full profiles. The agent will screenshot the blocker and mark `needs_review`.
+- **Key behavior:** If access is blocked or identity is unclear, the task is expected to fall back to `needs_review` instead of guessing.
 
 #### Task 3: Code Blame / Materiality (`andera_blame_review.yaml`)
 - **Andera requirement:** "Find the file, switch to Blame View, check how long ago the last change was. Determine if within X time. If so, check if it materially changed a calculation."
-- **Strategy:** `graph_traversal` (file view → blame view → commit details)
+- **Strategy:** `graph_traversal` (file view → blame view → recent commit)
 - **Output fields (6):** file_path, last_modified_date, last_modified_author, within_threshold, materially_changed, change_description
-- **Judgment:** "Could recent changes to this code have materially affected calculations?"
-- **How it maps:** The agent navigates file → blame → recent commit, assessing whether a code change could affect audit-relevant business logic. The `within_threshold` field directly maps to Andera's "within X time" requirement.
 
 #### Task 4: Form Fill + Report Download (`andera_form_download.yaml`)
 - **Andera requirement:** "Fill out form in Workday, screenshot it filled out, download the resulting report, click on tabs and download attachments."
-- **Strategy:** `form_fill` (empty form → fill → submit → download)
+- **Strategy:** `form_fill` (empty form → fill → submit → capture/download)
 - **Output fields (2):** form_submitted, response_status
-- **Checkpoints (3):** empty_form, filled_form, submission_result — captures the full form lifecycle
-- **How it maps:** Using httpbin.org as the form target (Workday isn't publicly accessible). The workflow is identical: navigate → screenshot empty form → fill with CSV data → screenshot filled form → submit → screenshot result → download artifacts.
 
 #### Task 5: Ticket Extraction (`andera_ticket_extraction.yaml`)
 - **Andera requirement:** "Excel list of links to linear tickets. Go through one by one, open the URL, take a screenshot. Compile CSV of ticket number, assignee, due date."
 - **Strategy:** `single_page` (visit → screenshot → extract)
 - **Output fields (7):** ticket_number, title, assignee, status, due_date, priority, labels
-- **How it maps:** Using GitHub Issues as a stand-in for Linear/Jira (same pattern: visit ticket URL, screenshot, extract fields to CSV). The `single_page` strategy handles this cleanly — no link following needed.
 
-### Andera Coverage Matrix
-
-| Andera Requirement | Task File | Strategy | Fields | Status |
-|-------------------|-----------|----------|--------|--------|
-| Commit audit with checks/CI/Jira | `andera_commit_audit.yaml` | graph_traversal | 12 | Implemented |
-| LinkedIn enrichment from CSV | `andera_linkedin_enrichment.yaml` | graph_traversal | 4 | Implemented |
-| Code blame/materiality review | `andera_blame_review.yaml` | graph_traversal | 6 | Implemented |
-| Form fill + report download | `andera_form_download.yaml` | form_fill | 2 | Implemented |
-| Ticket screenshot + CSV extraction | `andera_ticket_extraction.yaml` | single_page | 7 | Implemented |
-
-### How to Dry-Run All Andera Tasks
+### Dry-Run Validation
 
 ```bash
 python main.py --task tasks/andera_commit_audit.yaml --dry-run
@@ -692,10 +674,38 @@ python main.py --task tasks/andera_form_download.yaml --dry-run
 python main.py --task tasks/andera_ticket_extraction.yaml --dry-run
 ```
 
-All 5 validate cleanly — configs parsed, samples loaded, fields/checkpoints displayed.
+All 5 validated cleanly: configs parsed, samples loaded, fields/checkpoints displayed.
+
+### Runtime Validation — 2026-03-27 Parallel Browser Run
+
+After the dry-runs, all 5 tasks were launched in parallel in real browser sessions.
+
+| Task | Status | Result |
+|------|--------|--------|
+| `andera_ticket_extraction.yaml` | `needs_review` | Extracted all 7 fields correctly and met both checkpoints, but exceeded the 60s timeout |
+| `andera_blame_review.yaml` | `needs_review` | Captured file view and blame view, met required checkpoints, but timed out before recording fields/judgment |
+| `andera_commit_audit.yaml` | `needs_review` | Navigated commit → PR → checks, captured 3 screenshots, extracted 7/12 fields, timed out before final packaging |
+| `andera_linkedin_enrichment.yaml` | `needs_review` | Found the correct profile, hit the LinkedIn auth wall, captured blocker evidence, recorded a truthful blocked state |
+| `andera_form_download.yaml` | `completed` | Completed full form lifecycle: empty form, filled form, submission result, and successful judgment |
+
+### What Phase 5 Actually Proved
+
+- The engine can launch **all 5 Andera-aligned workflows** without new Python architecture.
+- **Form fill** is fully demonstrated end-to-end.
+- **LinkedIn enrichment** correctly handles an auth wall by reporting it honestly instead of guessing.
+- **Ticket extraction, blame review, and commit audit** are functionally viable, but GitHub-heavy flows still need more runtime headroom.
+- The remaining work is primarily **timeout and prompt tuning**, not framework redesign.
+
+### Recommended Runtime Tuning
+
+Based on the first parallel browser run:
+
+- `andera_ticket_extraction.yaml`: `timeout_seconds` 60 -> 90
+- `andera_blame_review.yaml`: `timeout_seconds` 120 -> 180
+- `andera_commit_audit.yaml`: `timeout_seconds` 120 -> 180
 
 ### How to Explain This Phase
 
-> "Phase 5 proved the architecture covers all 5 Andera task families — commit audit, LinkedIn enrichment, code blame, form fill, and ticket extraction — by adding only YAML task definitions and CSV inputs. Zero code changes to the engine. The same pipeline handles a 12-field commit audit across 4 pages and a simple ticket screenshot — that's the strategy pattern working exactly as designed."
+> "Phase 5 extended the existing engine to all 5 Andera task families using only YAML task definitions and CSV inputs. We then ran the actual browser workflows in parallel. The form workflow completed cleanly, LinkedIn handled a login wall honestly, and the deeper GitHub tasks reached the right pages and captured evidence but still need timeout tuning."
 
-> "The key metric: 5 different audit workflows, 3 strategies, 31 total output fields, 14 evidence checkpoints — all running through the same `main.py`, same evidence packaging, same provenance model. New Andera workflow = new YAML file."
+> "The key metric is architectural reuse: 5 different audit workflows, 3 strategies, 31 total output fields, and 14 evidence checkpoints all run through the same `main.py`, same evidence packaging, and same provenance model. The remaining work is runtime optimization, not framework redesign."

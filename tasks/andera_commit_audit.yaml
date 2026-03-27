@@ -129,7 +129,7 @@ checkpoints:
 
 evidence_types: ["screenshot", "extraction", "judgment"]
 max_steps: 20
-timeout_seconds: 180
-max_retries: 1
+timeout_seconds: 300
+max_retries: 0
 use_vision: auto
 judgment_question: "Was this commit properly reviewed and all checks passing before merge?"

@@ -140,8 +140,9 @@ class EvidenceAgent:
                 "--force-color-profile=srgb",
                 "--blink-settings=preferredColorScheme=1",
             ],
-            # Chrome profile for logged-in sessions (set CHROME_PROFILE_DIR in .env)
-            user_data_dir=_cfg.CHROME_PROFILE_DIR or None,
+            # Auth: load saved cookies if available (created by login helper script).
+            # Run: python -c "..." to save linkedin_auth.json, then set AUTH_STORAGE_STATE=linkedin_auth.json
+            storage_state=_cfg.AUTH_STORAGE_STATE if _cfg.AUTH_STORAGE_STATE else None,
         )
 
         # Step callback for live progress — signature: (BrowserStateSummary, AgentOutput, int)
