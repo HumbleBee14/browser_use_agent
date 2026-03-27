@@ -96,3 +96,4 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for the full design document.
 - [PHASE_1.md](PHASE_1.md) — Tools + Models foundation
 - [PHASE_2.md](PHASE_2.md) — DOM Extractor + Vision module
 - [PHASE_3.md](PHASE_3.md) — Agent Loop (the brain)
+- [PHASE_4.md](PHASE_4.md) — Orchestrator + Workers + Discovery
