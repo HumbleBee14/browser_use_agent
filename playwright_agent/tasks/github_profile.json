@@ -1,0 +1,36 @@
+{
+  "task_id": "github_profile",
+  "phase": "execution",
+  "start_url": "https://github.com/{username}",
+
+  "system_prompt": "You are a browser agent extracting public GitHub profile data. Navigate the page, take a full-page screenshot, and extract all visible fields. Set missing fields to null. Never guess. When all fields are extracted and at least one screenshot is taken, call done with the extracted data.",
+
+  "goal": "Extract: display_name, bio, company, location, followers, following, pinned_repos (as a list of repo names). Take one full-page screenshot labeled 'profile'.",
+
+  "keywords": ["bio", "followers", "following", "pinned", "company", "location", "repositories"],
+
+  "output_schema": {
+    "display_name": "string | null",
+    "bio": "string | null",
+    "company": "string | null",
+    "location": "string | null",
+    "followers": "string | null",
+    "following": "string | null",
+    "pinned_repos": "array | null"
+  },
+
+  "max_steps": 12,
+
+  "required_fields": ["display_name"],
+  "required_artifacts": ["screenshot"],
+
+  "judgment_required": false,
+  "judgment_question": null,
+  "judgment_output_schema": null,
+
+  "pagination": false,
+  "stop_condition": "all visible fields extracted and screenshot taken",
+
+  "input_schema": {},
+  "auth_profile": null
+}

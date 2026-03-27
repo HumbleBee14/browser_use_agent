@@ -1,0 +1,332 @@
+"""The Agent Loop — the entire brain of the system.
+
+Custom ReAct cycle: OBSERVE → DECIDE → ACT → CHECK → repeat.
+
+Everything else is scaffolding. This file is the agent.
+
+Key invariants:
+- Claude always returns a typed tool call (tool_choice=any), never prose
+- History capped at last 5 actions — token cost stays flat
+- Actions always return ActionResult, never raise
+- done/fail terminate the loop — max_steps is the hard ceiling
+- Loop detection: same (url, action) 3+ times → inject recovery nudge
+- Consecutive failures: 3+ → inject visible element list
+"""
+
+from __future__ import annotations
+
+import json
+from datetime import datetime
+
+from anthropic import AsyncAnthropic
+from playwright.async_api import Page
+
+import config
+from core import dom_extractor, vision
+from models.actions import (
+    AgentAction,
+    ActionResult,
+    StepRecord,
+    action_tool_schema,
+)
+from models.task import TaskSpec, SampleInput
+from tools import browser, output as output_tools
+from tools.output import OutputManager
+
+
+async def run(
+    page: Page,
+    sample: SampleInput,
+    task_spec: TaskSpec,
+    output_mgr: OutputManager,
+) -> None:
+    """Run the agent loop for one sample.
+
+    This is the complete agent. It observes the page, asks Claude what to do,
+    executes the action, and repeats until done/fail/max_steps.
+    """
+    client = AsyncAnthropic(api_key=config.ANTHROPIC_API_KEY)
+    tools = action_tool_schema()
+    history: list[dict] = []
+    loop_counter: dict[tuple, int] = {}  # (url, action_name) → count
+    consecutive_failures = 0
+    step = 0
+
+    # Navigate to starting URL if provided
+    if sample.url:
+        result = await browser.goto(page, sample.url)
+        history.append({"step": 0, "action": "goto", "url": sample.url,
+                        "result": result.description if result.success else result.error})
+
+    for step in range(1, task_spec.max_steps + 1):
+        # ---- 1. OBSERVE ----
+        snap = await dom_extractor.snapshot(page, task_spec.keywords)
+        page_state = dom_extractor.serialize(snap)
+
+        # If DOM confidence is low, supplement with vision
+        vision_text = ""
+        if snap.confidence < 0.6:
+            try:
+                screenshot_bytes = await vision.capture_screenshot(page, full_page=False)
+                question = vision.build_vision_question(page_state, task_spec.goal)
+                vision_text = await vision.analyze_screenshot(screenshot_bytes, question, page_state)
+            except Exception:
+                vision_text = ""
+
+        # ---- 2. BUILD PROMPT ----
+        messages = _build_messages(
+            page_state=page_state,
+            vision_text=vision_text,
+            history=history[-5:],  # rolling 5-action cap
+            task_spec=task_spec,
+            sample=sample,
+            snap=snap,
+            consecutive_failures=consecutive_failures,
+            loop_counter=loop_counter,
+        )
+
+        # ---- 3. DECIDE (LLM call) ----
+        try:
+            response = await client.messages.create(
+                model=config.LLM_MODEL,
+                max_tokens=1024,
+                system=task_spec.system_prompt,
+                messages=messages,
+                tools=tools,
+                tool_choice={"type": "any"},  # forces structured output — never prose
+            )
+        except Exception as e:
+            output_mgr.log_step(StepRecord(
+                step=step, action="llm_error", result=str(e)[:200], url=page.url,
+            ))
+            output_mgr.write_result(
+                status="failed", errors=[f"LLM error: {str(e)[:200]}"], steps=step,
+            )
+            return
+
+        # Extract the tool call from response
+        tool_block = next(
+            (b for b in response.content if b.type == "tool_use"), None
+        )
+        if not tool_block:
+            output_mgr.log_step(StepRecord(
+                step=step, action="no_tool_call", result="LLM returned no tool call", url=page.url,
+            ))
+            continue
+
+        action = AgentAction(action=tool_block.name, **tool_block.input)
+
+        # Extract thinking from text blocks (if any)
+        thinking = ""
+        for block in response.content:
+            if block.type == "text" and block.text:
+                thinking = block.text[:300]
+                break
+
+        # ---- 4. ACT ----
+        action_result = await _dispatch(action, page, snap, output_mgr)
+
+        # Log the step
+        output_mgr.log_step(StepRecord(
+            step=step,
+            thinking=thinking,
+            action=action.action,
+            params=action.model_dump(exclude_none=True, exclude={"action"}),
+            result=action_result.description if action_result.success else (action_result.error or ""),
+            url=page.url,
+        ))
+
+        # Update history for next prompt
+        history.append({
+            "step": step,
+            "action": action.action,
+            "params": {k: v for k, v in action.model_dump(exclude_none=True).items() if k != "action"},
+            "result": action_result.description if action_result.success else action_result.error,
+        })
+
+        # ---- 5. CHECK TERMINATION ----
+        if action.action == "done":
+            extracted = action.extracted or {}
+
+            # Machine-checkable completion: verify required fields
+            missing = [f for f in task_spec.required_fields if f not in extracted or not extracted[f]]
+            if missing and step < task_spec.max_steps:
+                # Bounce back — force agent to try again
+                history.append({
+                    "step": step,
+                    "action": "system_notice",
+                    "result": f"You called done but required fields are missing: {missing}. Try extracting them.",
+                })
+                consecutive_failures += 1
+                continue
+
+            output_mgr.write_result(
+                status="done", extracted=extracted,
+                judgment=extracted.get("judgment") if task_spec.judgment_required else None,
+                steps=step,
+            )
+            return
+
+        if action.action == "fail":
+            output_mgr.write_result(
+                status="failed",
+                errors=[action.note or "Agent called fail"],
+                steps=step,
+            )
+            return
+
+        # ---- 6. LOOP & FAILURE TRACKING ----
+        loop_key = (page.url, action.action)
+        loop_counter[loop_key] = loop_counter.get(loop_key, 0) + 1
+
+        if action_result.success:
+            consecutive_failures = 0
+        else:
+            consecutive_failures += 1
+
+    # Exhausted max_steps without done/fail
+    output_mgr.write_result(
+        status="failed",
+        errors=[f"Exhausted {task_spec.max_steps} steps without completing"],
+        steps=step,
+    )
+
+
+async def _dispatch(
+    action: AgentAction,
+    page: Page,
+    snap: dom_extractor.DOMSnapshot,
+    output_mgr: OutputManager,
+) -> ActionResult:
+    """Execute one action. Always returns ActionResult, never raises."""
+    try:
+        if action.action == "goto":
+            return await browser.goto(page, action.url or "")
+
+        elif action.action == "click":
+            return await browser.click(page, action.selector or "", snap.element_map)
+
+        elif action.action == "type":
+            return await browser.type_text(
+                page, action.selector or "", action.text or "", snap.element_map,
+            )
+
+        elif action.action == "scroll":
+            return await browser.scroll(page, action.direction or "down")
+
+        elif action.action == "screenshot":
+            data = await browser.take_screenshot(page, full_page=True)
+            artifact = output_mgr.save_screenshot(data, action.label or "page", page.url)
+            return ActionResult(
+                success=True,
+                description=f"Screenshot saved: {artifact.filename} (sha256: {artifact.sha256[:12]}...)",
+            )
+
+        elif action.action == "extract":
+            return await browser.extract_text(page, action.selector or "", snap.element_map)
+
+        elif action.action == "wait":
+            return await browser.wait_for(page, action.selector or "")
+
+        elif action.action in ("done", "fail"):
+            # Handled in the main loop
+            return ActionResult(success=True, description=f"Action: {action.action}")
+
+        else:
+            return ActionResult(success=False, error=f"Unknown action: {action.action}")
+
+    except Exception as e:
+        return ActionResult(success=False, error=f"Dispatch error: {str(e)[:200]}")
+
+
+def _build_messages(
+    page_state: str,
+    vision_text: str,
+    history: list[dict],
+    task_spec: TaskSpec,
+    sample: SampleInput,
+    snap: dom_extractor.DOMSnapshot,
+    consecutive_failures: int,
+    loop_counter: dict,
+) -> list[dict]:
+    """Build the message list for the LLM call.
+
+    Structure:
+      USER message with:
+        - Current page state (DOM)
+        - Vision analysis (if activated)
+        - Action history (last 5)
+        - Recovery nudges (if stuck)
+        - Goal + output schema
+    """
+    parts = []
+
+    # Current page state
+    parts.append(f"## Current page state\n{page_state}")
+
+    # Vision supplement (if DOM confidence was low)
+    if vision_text:
+        parts.append(f"\n## Visual analysis (DOM was insufficient)\n{vision_text}")
+
+    # Action history
+    if history:
+        history_text = "\n".join(
+            f"Step {h['step']}: {h['action']} → {h.get('result', '')[:100]}"
+            for h in history
+        )
+        parts.append(f"\n## Actions taken so far (last {len(history)})\n{history_text}")
+
+    # Loop detection nudge
+    for (url, act_name), count in loop_counter.items():
+        if count >= 3 and url == snap.url:
+            parts.append(
+                f"\n[NOTICE] You have repeated '{act_name}' on this URL {count} times "
+                f"without progress. Try a different approach or call fail()."
+            )
+            break
+
+    # Consecutive failure recovery
+    if consecutive_failures >= 3:
+        interactive = [
+            f"[{n.index}] [{n.role}] \"{n.name}\""
+            for n in snap.nodes
+            if n.role in dom_extractor.INTERACTIVE_ROLES and n.name
+        ]
+        if interactive:
+            parts.append(
+                f"\n[RECOVERY] {consecutive_failures} consecutive failures. "
+                f"Here are all visible interactive elements:\n"
+                + "\n".join(interactive[:15])
+            )
+
+    # Sample context
+    sample_info = f"SAMPLE: ID={sample.sample_id}"
+    if sample.url:
+        sample_info += f", URL={sample.url}"
+    if sample.extra:
+        sample_info += f", Extra={json.dumps(sample.extra)}"
+    parts.append(f"\n## Sample\n{sample_info}")
+
+    # Goal
+    parts.append(f"\n## Goal\n{task_spec.goal}")
+
+    # Output schema
+    if task_spec.output_schema:
+        schema_text = json.dumps(task_spec.output_schema, indent=2)
+        parts.append(f"\n## Output schema (populate when calling done)\n{schema_text}")
+
+    # Required fields reminder
+    if task_spec.required_fields:
+        parts.append(f"\nRequired fields (must be non-empty in done): {task_spec.required_fields}")
+
+    # Judgment reminder
+    if task_spec.judgment_required:
+        parts.append(
+            f"\n## Judgment required\nQuestion: {task_spec.judgment_question}\n"
+            f"Include judgment fields in your done() extracted data: "
+            f"{json.dumps(task_spec.judgment_output_schema)}"
+        )
+
+    parts.append("\nTake the single best next action.")
+
+    return [{"role": "user", "content": "\n".join(parts)}]
