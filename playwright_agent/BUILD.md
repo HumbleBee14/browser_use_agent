@@ -69,30 +69,14 @@ playwright_agent/
 
 ## Running Tests
 
-### Phase 1 — Models + Tools
 ```bash
 cd playwright_agent
-python -c "
-import sys; sys.path.insert(0, '.')
-from models.task import load_task_spec
-from models.actions import action_tool_schema
-from tools.output import OutputManager
-import tempfile, pathlib
 
-spec = load_task_spec('tasks/_template.json')
-print(f'TaskSpec OK: {spec.task_id}')
+# Run all regression tests
+python tests/test_phase1.py
 
-tools = action_tool_schema()
-print(f'Tool schema OK: {len(tools)} tools')
-
-with tempfile.TemporaryDirectory() as tmp:
-    om = OutputManager(pathlib.Path(tmp), 'test')
-    om.save_screenshot(b'test', 'page', 'https://example.com')
-    om.write_result(status='done', extracted={'field': 'value'}, steps=1)
-    print('OutputManager OK')
-
-print('Phase 1 PASSED')
-"
+# Or with pytest (if installed)
+python -m pytest tests/ -v
 ```
 
 ## Adding a New Task
