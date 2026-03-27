@@ -1,0 +1,34 @@
+{
+  "task_id": "linear_tickets",
+  "phase": "execution",
+  "start_url": "",
+
+  "system_prompt": "You are a browser agent collecting evidence from ticket/issue pages. For each ticket URL:\n1. Navigate to the ticket page\n2. Wait for the page to fully load (it may be a React SPA)\n3. Take a full-page screenshot (label: 'ticket')\n4. Extract the ticket number, title, assignee, status, and due date\n5. If a field is not visible or not set, use null — do not guess\n6. Call done with the extracted data",
+
+  "goal": "Extract: ticket_number, title, assignee, status, due_date. Take one full-page screenshot. If the page is a React SPA, wait for content to load before extracting.",
+
+  "keywords": ["ticket", "issue", "assignee", "assigned", "status", "due", "date", "priority", "label"],
+
+  "output_schema": {
+    "ticket_number": "string",
+    "title": "string",
+    "assignee": "string | null",
+    "status": "string | null",
+    "due_date": "string | null"
+  },
+
+  "max_steps": 12,
+
+  "required_fields": ["ticket_number", "title"],
+  "required_artifacts": ["ticket"],
+
+  "judgment_required": false,
+  "judgment_question": null,
+  "judgment_output_schema": null,
+
+  "pagination": false,
+  "stop_condition": "ticket fields extracted and screenshot taken",
+
+  "input_schema": {},
+  "auth_profile": null
+}
