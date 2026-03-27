@@ -138,13 +138,25 @@ class EvidenceAgent:
             args=[
                 "--disable-features=WebContentsForceDark",
                 "--force-color-profile=srgb",
+                "--blink-settings=preferredColorScheme=1",
             ],
             # Chrome profile for logged-in sessions (set CHROME_PROFILE_DIR in .env)
             user_data_dir=_cfg.CHROME_PROFILE_DIR or None,
         )
 
         # Step callback for live progress — signature: (BrowserStateSummary, AgentOutput, int)
-        def on_step(browser_state, agent_output, step_num):
+        # Also forces light theme on step 1 via Playwright emulateMedia.
+        _light_theme_applied = False
+
+        async def on_step(browser_state, agent_output, step_num):
+            nonlocal _light_theme_applied
+            if not _light_theme_applied:
+                _light_theme_applied = True
+                try:
+                    page = await agent.browser_session.get_current_page()
+                    await page.emulate_media(color_scheme="light")
+                except Exception:
+                    pass
             actions = []
             if agent_output and hasattr(agent_output, "action"):
                 for a in agent_output.action:

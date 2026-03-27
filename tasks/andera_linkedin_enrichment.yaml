@@ -35,7 +35,7 @@ input_columns: ["sample_id", "person_name"]
 
 output_fields:
   - name: linkedin_url
-    type: url
+    type: str
     required: true
     description: "LinkedIn profile URL"
   - name: school
