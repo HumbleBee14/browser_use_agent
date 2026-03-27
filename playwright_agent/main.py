@@ -161,6 +161,12 @@ async def run_batch(
         return_exceptions=True,
     )
 
+    # Surface any unexpected exceptions from workers
+    for i, result in enumerate(results):
+        if isinstance(result, Exception):
+            sid = pending[i].sample_id
+            console.print(f"  [red]Worker exception for {sid}: {result}[/red]")
+
     await browser.close()
     await p.stop()
 
@@ -244,6 +250,19 @@ async def run(args: argparse.Namespace) -> None:
         if not samples:
             console.print("[red]Discovery found no samples. Exiting.[/red]")
             return
+
+        # Validate discovered samples against execution task's input_schema
+        if task_spec.input_schema:
+            required_cols = [k for k, v in task_spec.input_schema.items() if "null" not in v]
+            for s in samples:
+                all_fields = {"sample_id": s.sample_id, "url": s.url, **s.extra}
+                missing = [c for c in required_cols if c not in all_fields or not all_fields[c]]
+                if missing:
+                    console.print(
+                        f"[yellow]Warning: discovered sample '{s.sample_id}' "
+                        f"missing input_schema fields: {missing}[/yellow]"
+                    )
+
         console.print(f"  Samples:     {len(samples)} (discovered)")
 
     # Phase 2: Load samples from CSV or single URL

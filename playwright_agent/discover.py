@@ -105,7 +105,11 @@ async def discover(
     seen = set()
     for item in items:
         if isinstance(item, dict):
-            sid = item.get("username") or item.get("id") or item.get("sample_id", "")
+            sid = (
+                item.get("username") or item.get("id") or item.get("sample_id")
+                or item.get("name", "").replace(" ", "_").lower()
+                or f"sample_{len(seen) + 1}"
+            )
             url = item.get("url") or item.get("href", "")
             # Preserve all extra fields (name, company, etc.)
             extra = {k: v for k, v in item.items() if k not in ("username", "id", "sample_id", "url", "href")}
