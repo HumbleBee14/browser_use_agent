@@ -558,3 +558,71 @@ python main.py --task tasks/github_issues.yaml --sample-id issue_001 \
 > "Phase 3 proved the architecture's generality. We added a form fill task and a GitHub issues task — both just YAML files, no code changes. The `--dry-run` flag lets you validate any task definition instantly. The richer run summary now shows checkpoint pass rates and error breakdowns, not just counts."
 
 > "The key demonstration: 3 task types (commit audit, issue extraction, form fill) across 3 strategies (graph_traversal, single_page, form_fill) — all running through the same CLI, same pipeline, same evidence packaging. New task = new YAML. New task family = one strategy class (~50 lines) + new YAML."
+
+---
+
+## Phase 4: Demo Preparation & Polish
+
+**Goal:** Clean, polished, demo-ready state — README, verified outputs, everything explainable.
+
+### What Was Done
+
+#### 1. README Rewrite (`README.md`)
+- Full architecture diagram (ASCII) showing the layer stack: CLI → Orchestrator → EvidenceAgent → Actions + Output
+- Strategy pattern table explaining 3 strategies and when to use each
+- Project structure tree with one-line descriptions per file
+- Complete setup instructions (venv, pip, playwright, .env)
+- Usage section: dry-run, single sample, batch, all CLI flags
+- Output structure with example provenance JSON
+- "Adding New Tasks" section with minimal YAML template
+- LLM provider table (Anthropic, OpenAI, Gemini — switch via .env)
+
+#### 2. Verified Demo Output — GitHub Issue Extraction
+- **Task:** `github_issues.yaml` (single_page strategy)
+- **Sample:** VS Code issue #305609 (Japanese bug report)
+- **Result:** COMPLETED in 85 seconds, 5 steps
+  - 7 fields extracted (issue_number, title, state, author, labels, created_date, comment_count)
+  - 2 checkpoints met (issue_page_screenshot, issue_fields_extracted)
+  - Judgment: YES — "Is this a bug report?" (99% confidence, reasoning: "body explicitly states Type: Bug")
+  - Agent correctly handled Japanese title and AI-translated label
+- **Enriched run_summary.json** working: checkpoint pass rates `1/1`, empty error breakdown
+
+### De-scoped from Phase 3 (P2 items)
+| Item | Status | Rationale |
+|------|--------|-----------|
+| Structured error categorization | De-scoped | Nice-to-have; current error strings in `SampleResult.errors` are sufficient for debugging |
+| `no_auth` vision live test | De-scoped | Requires auth-gated site; documented as known limitation; current tasks use `auto` mode |
+
+### Final Project State
+
+```
+Commits:
+  Phase 1:   Foundation (models, strategies, agent, orchestrator, CLI, actions, output)
+  Phase 1.5: Structured live logging + LLM provider updates
+  Phase 2:   Native Anthropic, real-world validation, code review fixes
+  Phase 2.5: Evidence integrity hardening, runtime optimization
+  Phase 3:   Multi-strategy showcase, --dry-run, enriched summaries
+  Phase 4:   README polish, verified demo outputs
+
+Task Types: 4 (demo, commit audit, issue extraction, form fill)
+Strategies: 3 (single_page, graph_traversal, form_fill)
+Custom Actions: 5 (screenshot, record_fields, mark_checkpoint, make_judgment, download_file)
+LLM Providers: 4 (anthropic, openai, gemini, browser_use)
+```
+
+### How to Demo This Project
+
+1. **Show `--dry-run`** on all 3 task types — instant config validation with clean tables
+2. **Show a live single-sample run** — `github_issues.yaml` is fastest (~85s)
+3. **Open the evidence folder** — show `result.json` provenance (every field → source URL + screenshot)
+4. **Show the architecture** — "3 strategies, 4 task types, 5 actions. New task = new YAML."
+5. **Show the code** — `actions.py` (custom actions), `strategies/base.py` (strategy pattern), `evidence_agent.py` (the wrapper)
+6. **Explain the split** — "LLM navigates. Python packages. That's the audit-grade guarantee."
+
+### How to Explain to Andera
+
+> "This is a general-purpose browser evidence agent. Given a YAML task definition and sample URLs, it autonomously navigates any website, extracts typed fields with full provenance, takes evidence screenshots with SHA-256 hashes, and makes structured audit judgments. Every output traces back to where it came from."
+
+> "The architecture is: YAML defines WHAT to collect, strategies define HOW to navigate, the LLM does the reasoning, and deterministic Python handles all packaging. Three strategies cover single-page extraction, multi-page graph traversal, and form interaction. Adding a new task in an existing family is just a YAML file — no code changes."
+
+> "For Andera's SOX audit use case, this maps directly: the agent navigates audit platforms, extracts evidence, fills forms, downloads reports, and produces a reviewable evidence chain. The checkpoint system ensures nothing is missed. The provenance chain ensures every value traces back to its source."
