@@ -38,6 +38,7 @@ from rich.table import Table
 import config
 import worker
 from discover import discover
+from log_setup import init_logging, logger
 from models.task import TaskSpec, SampleInput, load_task_spec
 from tools.output import merge_results_to_csv
 
@@ -176,6 +177,7 @@ async def run_batch(
 
     total_duration = time.time() - started_at
     _print_summary(evidence_dir, pending, total_duration, csv_path)
+    logger.info(f"Batch complete | samples={len(pending)} | duration={total_duration:.1f}s | csv={csv_path}")
 
 
 def _print_summary(evidence_dir: Path, samples: list[SampleInput], duration: float, csv_path: Path):
@@ -223,6 +225,9 @@ async def run(args: argparse.Namespace) -> None:
     else:
         evidence_dir = config.EVIDENCE_DIR / f"run_{datetime.now().strftime('%Y-%m-%d_%H%M%S')}"
         evidence_dir.mkdir(parents=True, exist_ok=True)
+
+    # Initialize structured file logging in the evidence directory
+    init_logging(evidence_dir)
 
     headless = args.headless if args.headless is not None else config.HEADLESS
     max_concurrent = args.concurrency or config.MAX_CONCURRENT
@@ -283,6 +288,11 @@ async def run(args: argparse.Namespace) -> None:
     else:
         console.print("[red]Error: Provide --input CSV, --url, or --discover + --start-url[/red]")
         return
+
+    logger.info(
+        f"Batch started | task={task_spec.task_id} | samples={len(samples)} | "
+        f"concurrency={max_concurrent} | model={config.LLM_MODEL}"
+    )
 
     console.print()
     await run_batch(task_spec, samples, evidence_dir, max_concurrent, headless)

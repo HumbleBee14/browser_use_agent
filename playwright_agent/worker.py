@@ -14,6 +14,7 @@ from playwright.async_api import Browser
 
 import agent_loop
 import config
+from log_setup import logger
 from models.task import TaskSpec, SampleInput
 from tools.output import OutputManager
 
@@ -30,6 +31,8 @@ async def run_sample(
     writes evidence files. Never raises — all errors are captured
     in result.json.
     """
+    log = logger.bind(sample_id=sample.sample_id)
+    log.info("Worker started")
     output_mgr = OutputManager(evidence_dir, sample.sample_id)
 
     # Build context options
@@ -51,6 +54,7 @@ async def run_sample(
         try:
             await agent_loop.run(page, sample, task_spec, output_mgr)
         except Exception as e:
+            log.error(f"Agent exception: {str(e)[:300]}")
             output_mgr.write_result(
                 status="failed",
                 errors=[f"Worker exception: {str(e)[:300]}"],
@@ -60,11 +64,12 @@ async def run_sample(
             await ctx.close()
 
     except Exception as e:
-        # Context creation itself failed (e.g., bad auth state file)
+        log.error(f"Context creation failed: {str(e)[:300]}")
         output_mgr.write_result(
             status="failed",
             errors=[f"Context creation failed: {str(e)[:300]}"],
             steps=0,
         )
 
+    log.info("Worker finished")
     return sample.sample_id

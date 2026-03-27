@@ -23,6 +23,7 @@ from playwright.async_api import Page
 
 import config
 from core import dom_extractor, vision
+from log_setup import logger
 from models.actions import (
     AgentAction,
     ActionResult,
@@ -45,6 +46,9 @@ async def run(
     This is the complete agent. It observes the page, asks Claude what to do,
     executes the action, and repeats until done/fail/max_steps.
     """
+    log = logger.bind(sample_id=sample.sample_id)
+    log.info(f"Agent loop started | url={sample.url} | max_steps={task_spec.max_steps}")
+
     client = AsyncAnthropic(api_key=config.ANTHROPIC_API_KEY, timeout=60.0)
     tools = action_tool_schema()
     history: list[dict] = []
@@ -58,6 +62,7 @@ async def run(
         history.append({"step": 0, "action": "goto", "url": sample.url,
                         "result": result.description if result.success else result.error})
         if not result.success:
+            log.error(f"Initial navigation failed: {result.error}")
             output_mgr.write_result(
                 status="failed",
                 errors=[f"Initial navigation failed: {result.error}"],
@@ -70,9 +75,12 @@ async def run(
         snap = await dom_extractor.snapshot(page, task_spec.keywords)
         page_state = dom_extractor.serialize(snap)
 
+        log.debug(f"Step {step} | DOM confidence={snap.confidence:.2f} | nodes={len(snap.nodes)}")
+
         # If DOM confidence is low, supplement with vision
         vision_text = ""
         if snap.confidence < 0.6:
+            log.debug(f"Step {step} | Vision activated (confidence={snap.confidence:.2f})")
             try:
                 screenshot_bytes = await vision.capture_screenshot(page, full_page=False)
                 question = vision.build_vision_question(page_state, task_spec.goal)
@@ -103,6 +111,7 @@ async def run(
                 tool_choice={"type": "any"},  # forces structured output — never prose
             )
         except Exception as e:
+            log.error(f"Step {step} | LLM error: {str(e)[:200]}")
             output_mgr.log_step(StepRecord(
                 step=step, action="llm_error", result=str(e)[:200], url=page.url,
             ))
@@ -125,6 +134,7 @@ async def run(
         try:
             action = AgentAction(action=tool_block.name, **tool_block.input)
         except Exception as e:
+            log.warning(f"Step {step} | Parse error: {str(e)[:200]}")
             output_mgr.log_step(StepRecord(
                 step=step, action="parse_error",
                 result=f"Invalid action from LLM: {str(e)[:200]}",
@@ -142,6 +152,9 @@ async def run(
 
         # ---- 4. ACT ----
         action_result = await _dispatch(action, page, snap, output_mgr)
+
+        result_desc = (action_result.description if action_result.success else action_result.error) or ""
+        log.info(f"Step {step} | {action.action} → {'OK' if action_result.success else 'FAIL'}: {result_desc[:120]}")
 
         # Log the step
         output_mgr.log_step(StepRecord(
@@ -184,6 +197,7 @@ async def run(
                     notice_parts.append(f"Required fields missing: {missing}")
                 if missing_artifacts:
                     notice_parts.append(f"Required artifacts missing: {missing_artifacts}")
+                log.warning(f"Step {step} | Incomplete done: {'; '.join(notice_parts)}")
 
                 if step < task_spec.max_steps:
                     # Bounce back — force agent to try again
@@ -211,6 +225,7 @@ async def run(
                     if k in extracted
                 }
 
+            log.info(f"Completed | status=done | steps={step} | fields={len(extracted)}")
             output_mgr.write_result(
                 status="done", extracted=extracted, judgment=judgment or None,
                 steps=step,
@@ -218,6 +233,7 @@ async def run(
             return
 
         if action.action == "fail":
+            log.warning(f"Failed | reason={action.note} | steps={step}")
             output_mgr.write_result(
                 status="failed",
                 errors=[action.note or "Agent called fail"],
@@ -235,6 +251,7 @@ async def run(
             consecutive_failures += 1
 
     # Exhausted max_steps without done/fail
+    log.warning(f"Exhausted {task_spec.max_steps} steps without completing")
     output_mgr.write_result(
         status="failed",
         errors=[f"Exhausted {task_spec.max_steps} steps without completing"],

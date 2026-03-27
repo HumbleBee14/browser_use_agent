@@ -27,6 +27,7 @@ from rich.console import Console
 
 import agent_loop
 import config
+from log_setup import logger
 from models.task import TaskSpec, SampleInput, load_task_spec
 from tools.output import OutputManager
 
@@ -43,6 +44,9 @@ async def discover(
 
     Returns list of discovered SampleInput objects and writes samples.csv.
     """
+    log = logger.bind(sample_id="discovery")
+    log.info(f"Discovery started | url={start_url} | task={task_spec.task_id}")
+
     console.print(f"  [dim]Discovery:[/dim] {start_url}")
     console.print(f"  [dim]Task:[/dim] {task_spec.task_id}")
     console.print()
@@ -70,6 +74,7 @@ async def discover(
     try:
         await agent_loop.run(page, sample, task_spec, output_mgr)
     except Exception as e:
+        log.error(f"Discovery error: {e}")
         console.print(f"[red]Discovery error: {e}[/red]")
 
     await ctx.close()
@@ -131,6 +136,7 @@ async def discover(
         seen.add(sid)
         samples.append(SampleInput(sample_id=sid, url=url, extra=extra))
 
+    log.info(f"Discovery complete | samples={len(samples)}")
     console.print(f"  [green]Discovered {len(samples)} samples[/green]")
 
     # Write samples.csv — include all fields (sample_id, url, + any extras)

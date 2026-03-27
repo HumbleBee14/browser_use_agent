@@ -20,6 +20,7 @@ from rich.console import Console
 
 import agent_loop
 import config
+from log_setup import init_logging
 from models.task import load_task_spec, SampleInput
 from tools.output import OutputManager
 
@@ -33,6 +34,7 @@ async def run(args):
 
     evidence_dir = config.EVIDENCE_DIR
     evidence_dir.mkdir(parents=True, exist_ok=True)
+    init_logging(evidence_dir)
 
     output_mgr = OutputManager(evidence_dir, sample_id)
 

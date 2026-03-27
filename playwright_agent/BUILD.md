@@ -60,11 +60,16 @@ playwright_agent/
 ├── tasks/               # Task specs (JSON) — all site-specific config
 │   └── _template.json
 │
+├── logs/                # Structured logs — one pair per run
+│   ├── run_2026-03-27_140000.log
+│   └── run_2026-03-27_140000.jsonl
+│
 └── evidence/            # Output — generated at runtime
-    └── {sample_id}/
-        ├── 01_{label}.png
-        ├── result.json
-        └── action_log.json
+    └── run_2026-03-27_140000/
+        └── {sample_id}/
+            ├── 01_{label}.png
+            ├── result.json
+            └── action_log.json
 ```
 
 ## Running Tests
@@ -86,6 +91,47 @@ python -m pytest tests/ -v
 3. Run: `python main.py --task tasks/your_task.json --input samples.csv`
 
 No Python code changes needed.
+
+## Logs
+
+Every run produces two log files in `logs/`, named after the run timestamp:
+
+| File | Format | Purpose |
+|------|--------|---------|
+| `run_YYYY-MM-DD_HHMMSS.log` | Human-readable text | Quick debugging, `grep`-friendly |
+| `run_YYYY-MM-DD_HHMMSS.jsonl` | JSON lines | Machine parsing, analysis, replay |
+
+Log lines are tagged with a `sample_id` column so parallel agents are distinguishable:
+
+```
+14:00:01.500 | INFO     |             torvalds | Worker started
+14:00:01.501 | INFO     |            gvanrossum | Worker started
+14:00:02.100 | INFO     |             torvalds | Step 1 | goto → OK: Navigated to ...
+14:00:03.200 | INFO     |            gvanrossum | Step 1 | goto → OK: Navigated to ...
+14:00:04.800 | INFO     |             torvalds | Completed | status=done | steps=3 | fields=6
+14:00:07.000 | INFO     |               system | Batch complete | samples=3 | duration=5.5s
+```
+
+**Common log queries:**
+
+```bash
+# View a specific agent's full trace
+grep "torvalds" logs/run_2026-03-27_140000.log
+
+# View only errors and warnings across all agents
+grep -E "ERROR|WARNING" logs/run_2026-03-27_140000.log
+
+# View system-level events (batch start/end, init)
+grep "system" logs/run_2026-03-27_140000.log
+
+# View discovery phase logs
+grep "discovery" logs/run_2026-03-27_140000.log
+
+# Parse structured JSON logs (e.g., filter by sample with jq)
+jq 'select(.record.extra.sample_id == "torvalds")' logs/run_2026-03-27_140000.jsonl
+```
+
+Console output (via `rich`) is unaffected — logs are file-only and never duplicate to stdout.
 
 ## Architecture
 

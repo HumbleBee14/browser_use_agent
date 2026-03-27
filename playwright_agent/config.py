@@ -28,3 +28,4 @@ AUTH_STORAGE_STATE: str | None = os.getenv("AUTH_STORAGE_STATE", None)
 # --- Paths ---
 EVIDENCE_DIR: Path = Path(__file__).parent / "evidence"
 TASKS_DIR: Path = Path(__file__).parent / "tasks"
+LOGS_DIR: Path = Path(__file__).parent / "logs"
