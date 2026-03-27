@@ -252,7 +252,11 @@ class EvidenceAgent:
         reason: NeedsReviewReason | None = None,
         retries: int = 0,
     ) -> SampleResult:
-        """Build a failed/needs_review SampleResult from an error."""
+        """Build a failed/needs_review SampleResult from an error.
+
+        Preserves any partial evidence already collected (screenshots,
+        fields, checkpoints) so result.json reflects what's on disk.
+        """
         status = SampleStatus.NEEDS_REVIEW if reason else SampleStatus.FAILED
         reasons = [reason] if reason else []
 
@@ -261,12 +265,17 @@ class EvidenceAgent:
             status=status,
             needs_review_reasons=reasons,
             input=self.sample,
+            # Preserve partial evidence from the attempt that timed out / failed
+            extracted_fields=self.file_manager._extractions,
+            artifacts=self.file_manager.artifacts,
+            checkpoints_met=self.file_manager._checkpoints_met,
+            judgment=self.file_manager._judgment,
             errors=[error],
             started_at=started_at,
             completed_at=datetime.now(),
             retries_used=retries,
         )
 
-        # Still save what we have
+        # Save manifest including partial evidence
         self.file_manager.save_result_manifest(result)
         return result

@@ -84,10 +84,17 @@ def create_evidence_controller(file_manager: FileManager) -> Controller:
 
         from models.evidence import FieldExtraction
 
-        # Find the latest screenshot artifact as default reference
-        default_artifact = ""
-        if file_manager.artifacts:
-            default_artifact = file_manager.artifacts[-1].filename
+        # Resolve artifact_ref: validate against real saved filenames,
+        # fall back to latest artifact if the agent-supplied name doesn't match.
+        valid_filenames = {a.filename for a in file_manager.artifacts}
+        resolved_ref = ""
+        if artifact_ref and artifact_ref in valid_filenames:
+            resolved_ref = artifact_ref
+        elif artifact_ref:
+            # Agent gave a name that doesn't match — use latest real artifact
+            resolved_ref = file_manager.artifacts[-1].filename if file_manager.artifacts else ""
+        else:
+            resolved_ref = file_manager.artifacts[-1].filename if file_manager.artifacts else ""
 
         extractions = []
         for name, value in fields.items():
@@ -96,7 +103,7 @@ def create_evidence_controller(file_manager: FileManager) -> Controller:
                 value=value,
                 source_url=page_url or "",
                 source_selector=source_selector or None,
-                artifact_ref=artifact_ref or default_artifact or None,
+                artifact_ref=resolved_ref or None,
             )
             extractions.append(extraction)
             file_manager._extractions.append(extraction)
@@ -152,9 +159,17 @@ def create_evidence_controller(file_manager: FileManager) -> Controller:
                 extracted_content=f"ERROR: answer must be 'yes', 'no', or 'inconclusive', got '{answer}'",
             )
 
-        # Parse comma-separated refs, or auto-populate from collected artifacts
-        refs = [r.strip() for r in evidence_refs.split(",") if r.strip()]
-        if not refs:
+        # Parse comma-separated refs, validate against real saved artifacts.
+        # Agent may hallucinate filenames (e.g. "pr_review.png" vs "03_pr_review.png").
+        valid_filenames = {a.filename for a in file_manager.artifacts}
+        raw_refs = [r.strip() for r in evidence_refs.split(",") if r.strip()]
+        if raw_refs:
+            refs = [r if r in valid_filenames else None for r in raw_refs]
+            refs = [r for r in refs if r]  # drop invalid refs
+            if not refs:
+                # All agent-supplied refs were invalid — fall back to all artifacts
+                refs = [a.filename for a in file_manager.artifacts]
+        else:
             refs = [a.filename for a in file_manager.artifacts]
 
         urls = [u.strip() for u in source_urls.split(",") if u.strip()]
