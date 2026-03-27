@@ -18,6 +18,7 @@ import logging
 from datetime import datetime
 from pathlib import Path
 
+from rich.console import Console
 from browser_use.llm.base import BaseChatModel
 
 from agent.evidence_agent import EvidenceAgent
@@ -27,6 +28,7 @@ from output.csv_writer import CSVWriter
 from strategies import resolve_strategy
 
 logger = logging.getLogger(__name__)
+console = Console()
 
 
 class BatchOrchestrator:
@@ -64,11 +66,15 @@ class BatchOrchestrator:
 
     async def run(self, samples: list[SampleInput]) -> BatchResult:
         """Process all samples, return aggregated results."""
-        logger.info(
-            f"Starting batch: {len(samples)} samples, "
-            f"max_concurrent={self.semaphore._value}, "
+        self._all_samples = samples
+        self._total = len(samples)
+
+        console.print(
+            f"  [dim]Batch:[/dim] {self._total} samples | "
+            f"concurrency={self.semaphore._value} | "
             f"strategy={self.task.strategy}"
         )
+        console.print()
 
         tasks = [self._process_sample(s) for s in samples]
         await asyncio.gather(*tasks)
@@ -95,7 +101,14 @@ class BatchOrchestrator:
     async def _process_sample(self, sample: SampleInput) -> None:
         """Process one sample — fresh strategy, exceptions wrapped."""
         async with self.semaphore:
-            logger.info(f"Processing sample: {sample.sample_id}")
+            idx = next(
+                (i for i, s in enumerate(self._all_samples) if s.sample_id == sample.sample_id),
+                0,
+            ) + 1
+            console.print(
+                f"  [{idx}/{self._total}] [cyan]{sample.sample_id}[/cyan] "
+                f"[dim]starting...[/dim]"
+            )
             try:
                 # Fresh strategy per sample — no shared state (ADL-4)
                 strategy = self.strategy_cls()
@@ -120,6 +133,37 @@ class BatchOrchestrator:
                     started_at=datetime.now(),
                     completed_at=datetime.now(),
                 )
+
+            # Log result with color-coded status
+            duration = (
+                (result.completed_at - result.started_at).total_seconds()
+                if result.completed_at
+                else 0.0
+            )
+            status_style = {
+                SampleStatus.COMPLETED: "[bold green]COMPLETED[/bold green]",
+                SampleStatus.FAILED: "[bold red]FAILED[/bold red]",
+                SampleStatus.NEEDS_REVIEW: "[bold yellow]NEEDS REVIEW[/bold yellow]",
+                SampleStatus.SKIPPED: "[dim]SKIPPED[/dim]",
+            }
+            status_text = status_style.get(result.status, result.status.value)
+            fields_count = len(result.extracted_fields)
+            artifacts_count = len(result.artifacts)
+            checkpoints_count = len(result.checkpoints_met)
+
+            console.print(
+                f"  [{idx}/{self._total}] [cyan]{sample.sample_id}[/cyan] "
+                f"{status_text} "
+                f"[dim]({result.steps_taken} steps, {duration:.1f}s, "
+                f"{fields_count} fields, {artifacts_count} artifacts, "
+                f"{checkpoints_count} checkpoints)[/dim]"
+            )
+
+            if result.errors:
+                for err in result.errors[:2]:
+                    short = err[:120].split("\n")[0]
+                    console.print(f"           [red]{short}[/red]")
+
             self._results.append(result)
 
     def _build_batch_result(self) -> BatchResult:

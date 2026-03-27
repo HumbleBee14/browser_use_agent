@@ -162,8 +162,9 @@ async def run_batch(args: argparse.Namespace) -> None:
         headless=headless,
     )
 
-    with console.status("[bold green]Running evidence collection..."):
-        batch_result = await orchestrator.run(samples)
+    console.print("[bold green]Running evidence collection...[/bold green]")
+    console.print()
+    batch_result = await orchestrator.run(samples)
 
     # Print results
     print_results(batch_result)

@@ -42,5 +42,7 @@ class CSVWriter:
             rows.append(row)
 
         df = pd.DataFrame(rows, columns=self.columns)
+        # Sort by sample_id for deterministic output regardless of completion order
+        df = df.sort_values("sample_id").reset_index(drop=True)
         df.to_csv(self.csv_path, index=False)
         return self.csv_path

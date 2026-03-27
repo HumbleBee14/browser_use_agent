@@ -1,11 +1,11 @@
 """LLM provider factory — clean abstraction over multiple providers.
 
-Supports any LLM that browser-use supports: Anthropic, OpenAI, Google, etc.
+Supports any LLM that browser-use supports: Anthropic, OpenAI, Gemini, etc.
 Provider selection is config-driven (via .env), never hardcoded.
 
 Usage:
     llm = create_llm()  # Uses LLM_PROVIDER and LLM_MODEL from .env
-    llm = create_llm(provider="openai", model="gpt-4o")  # Explicit override
+    llm = create_llm(provider="openai", model="gpt-5.4")  # Explicit override
 """
 
 from browser_use.llm.base import BaseChatModel
@@ -50,7 +50,7 @@ def _create_openai(model: str, api_key: str, **kwargs) -> BaseChatModel:
     )
 
 
-def _create_google(model: str, api_key: str, **kwargs) -> BaseChatModel:
+def _create_gemini(model: str, api_key: str, **kwargs) -> BaseChatModel:
     """Create Google Gemini LLM."""
     from browser_use.llm.models import ChatGoogle
 
@@ -74,8 +74,7 @@ def _create_browser_use(model: str, api_key: str, **kwargs) -> BaseChatModel:
 PROVIDER_REGISTRY: dict[str, callable] = {
     "anthropic": _create_anthropic,
     "openai": _create_openai,
-    "google": _create_google,
-    "gemini": _create_google,  # alias
+    "gemini": _create_gemini,
     "browser_use": _create_browser_use,
 }
 
@@ -93,7 +92,7 @@ def create_llm(
     2. Environment variable (via config.py)
     3. Default
 
-    Supported providers: anthropic, openai, google/gemini, browser_use
+    Supported providers: anthropic, openai, gemini, browser_use
     """
     import config
 
@@ -106,21 +105,19 @@ def create_llm(
     if model is None:
         # Provider-specific defaults
         model_defaults = {
-            "anthropic": "claude-sonnet-4-20250514",
-            "openai": "gpt-4o",
-            "google": "gemini-2.0-flash",
-            "gemini": "gemini-2.0-flash",
+            "anthropic": "claude-sonnet-4-6",
+            "openai": "gpt-5.4",
+            "gemini": "gemini-3.1-pro-preview",
             "browser_use": "bu-latest",
         }
-        model = model_defaults.get(provider, "claude-sonnet-4-20250514")
+        model = model_defaults.get(provider, "claude-sonnet-4-6")
 
     # Resolve API key
     if api_key is None:
         key_env_map = {
             "anthropic": "ANTHROPIC_API_KEY",
             "openai": "OPENAI_API_KEY",
-            "google": "GOOGLE_API_KEY",
-            "gemini": "GOOGLE_API_KEY",
+            "gemini": "GEMINI_API_KEY",
             "browser_use": "BROWSER_USE_API_KEY",
         }
         import os

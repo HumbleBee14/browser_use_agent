@@ -16,6 +16,7 @@ import logging
 from datetime import datetime
 from pathlib import Path
 
+from rich.console import Console
 from browser_use import Agent, Browser, BrowserProfile
 from browser_use.llm.base import BaseChatModel
 
@@ -31,6 +32,7 @@ from output.file_manager import FileManager
 from strategies.base import BaseTaskStrategy
 
 logger = logging.getLogger(__name__)
+console = Console()
 
 
 class EvidenceAgent:
@@ -72,7 +74,7 @@ class EvidenceAgent:
                 # Fresh file manager per attempt — no stale data from prior retries
                 self.file_manager = FileManager(self.sample_dir)
                 result = await self._execute_once(started_at)
-                result.retries_used = retries_used
+                result.retries_used = attempt  # attempt 0 = no retries, 1 = one retry, etc.
                 # Strategy validates: checkpoints, field types, completeness
                 return self.strategy.validate_result(result, self.task)
             except asyncio.TimeoutError:
@@ -106,6 +108,8 @@ class EvidenceAgent:
 
     async def _execute_once(self, started_at: datetime) -> SampleResult:
         """Run the browser-use agent once with timeout."""
+        sid = self.sample.sample_id
+
         # Build prompt via strategy
         prompt = self.strategy.build_prompt(self.task, self.sample)
 
@@ -123,6 +127,21 @@ class EvidenceAgent:
             allowed_domains=self.task.allowed_domains or None,
         )
 
+        # Step callback for live progress — signature: (BrowserStateSummary, AgentOutput, int)
+        def on_step(browser_state, agent_output, step_num):
+            actions = []
+            if agent_output and hasattr(agent_output, "action"):
+                for a in agent_output.action:
+                    dumped = a.model_dump(exclude_none=True)
+                    actions.extend(dumped.keys())
+            action_str = ", ".join(actions) if actions else "thinking"
+            goal = ""
+            if agent_output and hasattr(agent_output, "next_goal") and agent_output.next_goal:
+                goal = f" [dim italic]{agent_output.next_goal[:80]}[/dim italic]"
+            console.print(
+                f"           [dim]{sid}[/dim] step {step_num}: {action_str}{goal}"
+            )
+
         # Create browser-use agent
         agent = Agent(
             task=prompt,
@@ -131,6 +150,7 @@ class EvidenceAgent:
             browser_profile=browser_profile,
             use_vision=initial_vision,
             max_actions_per_step=5,
+            register_new_step_callback=on_step,
         )
 
         # Run with timeout
