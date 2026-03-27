@@ -14,6 +14,9 @@ __pycache__/
 *.pyo
 .venv/
 venv/
+*.log
+*.jsonl
+
 
 # Auth state (contains session cookies)
 *_auth.json
