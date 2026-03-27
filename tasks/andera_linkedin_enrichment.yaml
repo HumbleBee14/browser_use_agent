@@ -63,7 +63,7 @@ checkpoints:
 
 evidence_types: ["screenshot", "extraction", "judgment"]
 max_steps: 15
-timeout_seconds: 90
+timeout_seconds: 150
 max_retries: 1
 use_vision: auto
 judgment_question: "Is this the correct LinkedIn profile for the given name?"

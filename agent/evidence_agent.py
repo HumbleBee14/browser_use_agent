@@ -126,12 +126,21 @@ class EvidenceAgent:
 
         # Browser profile with headless, domain allowlist, and page load tuning.
         # JS-heavy sites (GitHub) never fully idle — reduce wait to avoid timeouts.
+        import config as _cfg
+
         browser_profile = BrowserProfile(
             headless=self.headless,
             allowed_domains=self.task.allowed_domains or None,
             wait_for_network_idle_page_load_time=5.0,
             minimum_wait_page_load_time=0.5,
             wait_between_actions=0.5,
+            # Force light theme for clean white screenshots (better for OCR/audit docs)
+            args=[
+                "--disable-features=WebContentsForceDark",
+                "--force-color-profile=srgb",
+            ],
+            # Chrome profile for logged-in sessions (set CHROME_PROFILE_DIR in .env)
+            user_data_dir=_cfg.CHROME_PROFILE_DIR or None,
         )
 
         # Step callback for live progress — signature: (BrowserStateSummary, AgentOutput, int)

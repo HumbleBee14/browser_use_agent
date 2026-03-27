@@ -68,6 +68,6 @@ checkpoints:
 
 evidence_types: ["screenshot", "extraction"]
 max_steps: 10
-timeout_seconds: 60
+timeout_seconds: 120
 max_retries: 1
 use_vision: auto

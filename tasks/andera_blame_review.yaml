@@ -86,7 +86,7 @@ checkpoints:
 
 evidence_types: ["screenshot", "extraction", "judgment"]
 max_steps: 15
-timeout_seconds: 120
+timeout_seconds: 180
 max_retries: 1
 use_vision: auto
 judgment_question: "Could recent changes to this code have materially affected calculations?"

@@ -23,6 +23,7 @@ LLM_MODEL: str | None = os.getenv("LLM_MODEL", None)  # None = use provider defa
 # --- Browser Settings ---
 HEADLESS: bool = os.getenv("HEADLESS", "false").lower() == "true"
 MAX_CONCURRENT: int = int(os.getenv("MAX_CONCURRENT", "3"))
+CHROME_PROFILE_DIR: str | None = os.getenv("CHROME_PROFILE_DIR", None)
 
 # --- Output Settings ---
 EVIDENCE_DIR: Path = Path(os.getenv("EVIDENCE_DIR", "evidence"))
