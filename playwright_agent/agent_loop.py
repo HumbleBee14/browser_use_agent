@@ -45,18 +45,25 @@ async def run(
     This is the complete agent. It observes the page, asks Claude what to do,
     executes the action, and repeats until done/fail/max_steps.
     """
-    client = AsyncAnthropic(api_key=config.ANTHROPIC_API_KEY)
+    client = AsyncAnthropic(api_key=config.ANTHROPIC_API_KEY, timeout=60.0)
     tools = action_tool_schema()
     history: list[dict] = []
     loop_counter: dict[tuple, int] = {}  # (url, action_name) → count
     consecutive_failures = 0
     step = 0
 
-    # Navigate to starting URL if provided
+    # Navigate to starting URL if provided — fail fast if unreachable
     if sample.url:
         result = await browser.goto(page, sample.url)
         history.append({"step": 0, "action": "goto", "url": sample.url,
                         "result": result.description if result.success else result.error})
+        if not result.success:
+            output_mgr.write_result(
+                status="failed",
+                errors=[f"Initial navigation failed: {result.error}"],
+                steps=0,
+            )
+            return
 
     for step in range(1, task_spec.max_steps + 1):
         # ---- 1. OBSERVE ----
@@ -114,7 +121,16 @@ async def run(
             ))
             continue
 
-        action = AgentAction(action=tool_block.name, **tool_block.input)
+        try:
+            action = AgentAction(action=tool_block.name, **tool_block.input)
+        except Exception as e:
+            output_mgr.log_step(StepRecord(
+                step=step, action="parse_error",
+                result=f"Invalid action from LLM: {str(e)[:200]}",
+                url=page.url,
+            ))
+            consecutive_failures += 1
+            continue
 
         # Extract thinking from text blocks (if any)
         thinking = ""
@@ -148,21 +164,42 @@ async def run(
         if action.action == "done":
             extracted = action.extracted or {}
 
-            # Machine-checkable completion: verify required fields
-            missing = [f for f in task_spec.required_fields if f not in extracted or not extracted[f]]
-            if missing and step < task_spec.max_steps:
-                # Bounce back — force agent to try again
+            # Machine-checkable completion: verify required fields (use "is None" not "not" — 0/false are valid)
+            missing = [f for f in task_spec.required_fields if f not in extracted or extracted[f] is None]
+
+            # Verify required artifacts were captured
+            missing_artifacts = []
+            if task_spec.required_artifacts:
+                saved_labels = {a.filename.split("_", 1)[-1].rsplit(".", 1)[0] for a in output_mgr._artifacts}
+                for req in task_spec.required_artifacts:
+                    if not any(req in label for label in saved_labels):
+                        missing_artifacts.append(req)
+
+            if (missing or missing_artifacts) and step < task_spec.max_steps:
+                notice_parts = []
+                if missing:
+                    notice_parts.append(f"Required fields missing: {missing}")
+                if missing_artifacts:
+                    notice_parts.append(f"Required artifacts missing: {missing_artifacts}")
                 history.append({
                     "step": step,
                     "action": "system_notice",
-                    "result": f"You called done but required fields are missing: {missing}. Try extracting them.",
+                    "result": ". ".join(notice_parts) + ". Try again.",
                 })
                 consecutive_failures += 1
                 continue
 
+            # Extract judgment if present
+            judgment = None
+            if task_spec.judgment_required and task_spec.judgment_output_schema:
+                judgment = {
+                    k: extracted.pop(k, None)
+                    for k in task_spec.judgment_output_schema
+                    if k in extracted
+                }
+
             output_mgr.write_result(
-                status="done", extracted=extracted,
-                judgment=extracted.get("judgment") if task_spec.judgment_required else None,
+                status="done", extracted=extracted, judgment=judgment or None,
                 steps=step,
             )
             return
