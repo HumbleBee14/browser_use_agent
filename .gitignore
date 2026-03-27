@@ -179,3 +179,13 @@ cython_debug/
 #  refer to https://docs.cursor.com/context/ignore-files
 .cursorignore
 .cursorindexingignore
+
+# Roopik IDE metadata
+.roopik/
+
+# Evidence output (runtime generated, not committed)
+evidence/
+
+# Downloaded files
+downloads/
+/docs

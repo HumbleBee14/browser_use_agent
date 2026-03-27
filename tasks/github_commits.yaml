@@ -1,0 +1,75 @@
+name: github_commit_audit
+description: "Audit GitHub commits for authorship and review compliance"
+strategy: graph_traversal
+
+instructions: |
+  For each commit URL provided:
+  1. Navigate to the commit page on GitHub.
+  2. Use the screenshot_evidence action to capture the commit details page (label: "commit_page").
+  3. Use mark_checkpoint with name "commit_page_screenshot".
+  4. Use the record_fields action to extract these fields as JSON:
+     - commit_hash: the full SHA hash
+     - author: the commit author name
+     - date: the commit date
+     - message: the commit message (first line)
+     - files_changed: number of files changed (as integer)
+  5. Use mark_checkpoint with name "commit_fields_extracted".
+  6. Look for a linked Pull Request on the commit page.
+  7. If a PR exists, navigate to it and take a screenshot (label: "pr_review").
+     Then use mark_checkpoint with name "pr_review_screenshot".
+     Check if the PR was reviewed/approved.
+  8. Use record_fields to add: has_pr (true/false), was_reviewed (true/false if PR exists).
+  9. Use make_judgment to answer: "Was this commit properly reviewed before merge?"
+
+input_file: "inputs/github_commits.csv"
+input_columns: ["sample_id", "url"]
+
+output_fields:
+  - name: commit_hash
+    type: str
+    required: true
+    description: "Full SHA hash of the commit"
+  - name: author
+    type: str
+    required: true
+    description: "Commit author name"
+  - name: date
+    type: date
+    required: true
+    description: "Commit date"
+  - name: message
+    type: str
+    required: true
+    description: "Commit message (first line)"
+  - name: files_changed
+    type: int
+    required: false
+    description: "Number of files changed"
+  - name: has_pr
+    type: bool
+    required: true
+    description: "Whether commit has a linked PR"
+  - name: was_reviewed
+    type: bool
+    required: false
+    description: "Whether the PR was reviewed/approved"
+
+checkpoints:
+  - name: commit_page_screenshot
+    evidence_type: screenshot
+    description: "Screenshot of the commit detail page"
+    required: true
+  - name: commit_fields_extracted
+    evidence_type: extraction
+    description: "All required commit fields extracted"
+    required: true
+  - name: pr_review_screenshot
+    evidence_type: screenshot
+    description: "Screenshot of PR review status (if PR exists)"
+    required: false
+
+evidence_types: ["screenshot", "extraction", "judgment"]
+max_steps: 30
+timeout_seconds: 180
+use_vision: auto
+judgment_question: "Was this commit properly reviewed before merge?"
