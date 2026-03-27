@@ -20,6 +20,9 @@ from playwright.async_api import Page
 
 import config
 
+# Module-level client for connection reuse across vision calls
+_client: AsyncAnthropic | None = None
+
 
 async def capture_screenshot(page: Page, full_page: bool = True) -> bytes:
     """Capture a screenshot with consistent settings.
@@ -81,7 +84,11 @@ async def analyze_screenshot(
         "text": question,
     })
 
-    client = AsyncAnthropic(api_key=config.ANTHROPIC_API_KEY)
+    # Reuse module-level client for HTTP connection pooling across calls
+    global _client
+    if _client is None:
+        _client = AsyncAnthropic(api_key=config.ANTHROPIC_API_KEY, timeout=60.0)
+    client = _client
 
     try:
         response = await client.messages.create(
