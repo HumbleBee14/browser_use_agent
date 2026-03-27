@@ -1,0 +1,30 @@
+{
+  "task_id": "unique_name",
+  "phase": "execution",
+  "start_url": "https://...",
+
+  "system_prompt": "You are a browser agent. Your job is to [specific goal]. Extract only what you can see. Set missing fields to null. Never guess.",
+
+  "goal": "Natural language: what to collect, when to stop, what to do if a field is missing.",
+
+  "keywords": ["relevant", "terms"],
+
+  "output_schema": {
+    "field_name": "string | null"
+  },
+
+  "max_steps": 25,
+
+  "required_fields": ["field_name"],
+  "required_artifacts": ["screenshot"],
+
+  "judgment_required": false,
+  "judgment_question": null,
+  "judgment_output_schema": null,
+
+  "pagination": false,
+  "stop_condition": "natural language description of done state",
+
+  "input_schema": {},
+  "auth_profile": null
+}

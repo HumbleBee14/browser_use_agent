@@ -1,0 +1,24 @@
+# Evidence output (generated at runtime)
+evidence/
+samples.csv
+combined.csv
+*.csv.lock
+
+# Environment
+.env
+!.env.example
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+
+# Auth state (contains session cookies)
+*_auth.json
+
+# IDE
+.idea/
+.vscode/
+*.swp
