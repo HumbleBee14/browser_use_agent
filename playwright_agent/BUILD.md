@@ -94,3 +94,4 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for the full design document.
 ## Phase Docs
 
 - [PHASE_1.md](PHASE_1.md) — Tools + Models foundation
+- [PHASE_2.md](PHASE_2.md) — DOM Extractor + Vision module
