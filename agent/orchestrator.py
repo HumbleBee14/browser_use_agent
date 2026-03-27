@@ -77,7 +77,8 @@ class BatchOrchestrator:
         console.print()
 
         tasks = [self._process_sample(s) for s in samples]
-        await asyncio.gather(*tasks)
+        results = await asyncio.gather(*tasks)
+        self._results = list(results)
 
         # Buffered CSV write — one pass after all samples complete
         csv_writer = CSVWriter(
@@ -98,8 +99,8 @@ class BatchOrchestrator:
 
         return batch_result
 
-    async def _process_sample(self, sample: SampleInput) -> None:
-        """Process one sample — fresh strategy, exceptions wrapped."""
+    async def _process_sample(self, sample: SampleInput) -> SampleResult:
+        """Process one sample — fresh strategy, exceptions wrapped. Returns result."""
         async with self.semaphore:
             idx = next(
                 (i for i, s in enumerate(self._all_samples) if s.sample_id == sample.sample_id),
@@ -164,7 +165,7 @@ class BatchOrchestrator:
                     short = err[:120].split("\n")[0]
                     console.print(f"           [red]{short}[/red]")
 
-            self._results.append(result)
+            return result
 
     def _build_batch_result(self) -> BatchResult:
         """Aggregate individual results into a BatchResult."""

@@ -1,0 +1,69 @@
+name: github_issue_extraction
+description: "Extract issue details from GitHub issue pages"
+strategy: single_page
+
+instructions: |
+  For each GitHub issue URL provided:
+  1. Navigate to the issue page.
+  2. Use screenshot_evidence to capture the issue page (label: "issue_page").
+  3. Use mark_checkpoint with name "issue_page_screenshot".
+  4. Use record_fields to extract these fields as JSON:
+     - issue_number: the issue number (integer)
+     - title: the issue title
+     - state: "open" or "closed"
+     - author: who opened the issue
+     - labels: comma-separated list of labels (or "none")
+     - created_date: when the issue was created
+     - comment_count: number of comments (as integer)
+  5. Use mark_checkpoint with name "issue_fields_extracted".
+  6. Use make_judgment to answer: "Is this issue a bug report?"
+     Base your answer on the issue title, labels, and body content.
+
+input_file: "inputs/github_issues.csv"
+input_columns: ["sample_id", "url"]
+
+output_fields:
+  - name: issue_number
+    type: int
+    required: true
+    description: "The issue number"
+  - name: title
+    type: str
+    required: true
+    description: "Issue title"
+  - name: state
+    type: str
+    required: true
+    description: "Issue state: open or closed"
+  - name: author
+    type: str
+    required: true
+    description: "Who opened the issue"
+  - name: labels
+    type: str
+    required: false
+    description: "Comma-separated labels"
+  - name: created_date
+    type: date
+    required: true
+    description: "When the issue was created"
+  - name: comment_count
+    type: int
+    required: false
+    description: "Number of comments"
+
+checkpoints:
+  - name: issue_page_screenshot
+    evidence_type: screenshot
+    description: "Screenshot of the issue page"
+    required: true
+  - name: issue_fields_extracted
+    evidence_type: extraction
+    description: "All required issue fields extracted"
+    required: true
+
+evidence_types: ["screenshot", "extraction", "judgment"]
+max_steps: 20
+timeout_seconds: 120
+use_vision: auto
+judgment_question: "Is this issue a bug report?"

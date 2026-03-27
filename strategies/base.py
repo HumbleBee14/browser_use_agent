@@ -43,8 +43,11 @@ class BaseTaskStrategy(ABC):
     def should_use_vision(self, task: TaskConfig, current_url: str) -> bool:
         """Whether to enable vision (screenshot analysis) for the current page.
 
-        Called by EvidenceAgent to set initial vision mode.
-        For 'no_auth' mode, also called per-step via callback.
+        Called by EvidenceAgent once at agent creation to set initial vision mode.
+
+        LIMITATION: browser-use Agent does not support toggling use_vision
+        mid-run, so "no_auth" mode only evaluates against the initial URL.
+        Per-step re-evaluation would require upstream API changes.
 
         ADL-8: "auto" defaults to False (DOM-only) in v1.
         No runtime DOM→vision fallback. If a task needs vision,

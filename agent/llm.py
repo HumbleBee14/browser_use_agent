@@ -13,28 +13,18 @@ from browser_use.llm.base import BaseChatModel
 
 # Provider registry — maps provider names to their factory functions
 def _create_anthropic(model: str, api_key: str, **kwargs) -> BaseChatModel:
-    """Create Anthropic LLM via ChatOpenAI with Anthropic base URL.
+    """Create Anthropic LLM via browser-use's native ChatAnthropic.
 
-    browser-use doesn't have a native Anthropic class, but ChatOpenAI
-    works with Anthropic's OpenAI-compatible endpoint. We need to:
-    - Set dont_force_structured_output=True (Anthropic doesn't support all JSON schema features)
-    - Set remove_min_items_from_schema=True (Anthropic rejects 'minimum' in JSON schema)
-    - Set remove_defaults_from_schema=True (cleaner schema for Anthropic)
+    Uses the direct Anthropic SDK — proper tool calling, caching,
+    and structured output without OpenAI-compat hacks.
     """
-    from browser_use.llm.models import ChatOpenAI
+    from browser_use.llm.anthropic.chat import ChatAnthropic
 
-    return ChatOpenAI(
+    return ChatAnthropic(
         model=model,
         api_key=api_key,
-        base_url="https://api.anthropic.com/v1/",
         max_retries=kwargs.get("max_retries", 3),
         temperature=kwargs.get("temperature", 0.2),
-        # Anthropic's OpenAI-compat endpoint doesn't support full JSON schema
-        # in response_format. Put schema in system prompt instead.
-        add_schema_to_system_prompt=True,
-        dont_force_structured_output=True,
-        remove_min_items_from_schema=True,
-        remove_defaults_from_schema=True,
     )
 
 

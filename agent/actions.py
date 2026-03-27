@@ -99,8 +99,6 @@ def create_evidence_controller(file_manager: FileManager) -> Controller:
                 artifact_ref=artifact_ref or default_artifact or None,
             )
             extractions.append(extraction)
-            if not hasattr(file_manager, "_extractions"):
-                file_manager._extractions = []
             file_manager._extractions.append(extraction)
 
         field_summary = ", ".join(f"{k}={v}" for k, v in fields.items())
@@ -120,8 +118,6 @@ def create_evidence_controller(file_manager: FileManager) -> Controller:
         checkpoint_name: str,
     ) -> ActionResult:
         """Mark a checkpoint as satisfied."""
-        if not hasattr(file_manager, "_checkpoints_met"):
-            file_manager._checkpoints_met = []
         file_manager._checkpoints_met.append(checkpoint_name)
 
         return ActionResult(
@@ -198,15 +194,39 @@ def create_evidence_controller(file_manager: FileManager) -> Controller:
     ) -> ActionResult:
         """Download a file and save to evidence folder with hash."""
         try:
-            download_url = url or page_url or ""
+            download_url = url or ""
             if not download_url:
                 return ActionResult(
-                    extracted_content="ERROR: No URL to download from.",
+                    extracted_content=(
+                        "ERROR: You must provide an explicit file URL to download. "
+                        "Do not call download_file without a URL."
+                    ),
                 )
 
             # Use the browser session to download
             page = await browser_session.get_current_page()
             response = await page.context.request.get(download_url)
+
+            # Validate response before saving
+            status = response.status
+            content_type = response.headers.get("content-type", "")
+            if status < 200 or status >= 300:
+                return ActionResult(
+                    extracted_content=(
+                        f"ERROR: Download failed with HTTP {status} for {download_url}"
+                    ),
+                )
+
+            # Reject HTML responses — likely a redirect, login page, or error page
+            if "text/html" in content_type and not filename.endswith((".html", ".htm")):
+                return ActionResult(
+                    extracted_content=(
+                        f"ERROR: Server returned HTML (content-type: {content_type}) "
+                        f"instead of a file. The URL may require authentication or "
+                        f"may be a redirect. URL: {download_url}"
+                    ),
+                )
+
             data = await response.body()
 
             artifact = file_manager.save_download(
@@ -217,7 +237,8 @@ def create_evidence_controller(file_manager: FileManager) -> Controller:
             return ActionResult(
                 extracted_content=(
                     f"Downloaded: {artifact.filename} "
-                    f"(sha256: {artifact.sha256}, size: {len(data)} bytes, source: {download_url})"
+                    f"(sha256: {artifact.sha256}, size: {len(data)} bytes, "
+                    f"content-type: {content_type}, source: {download_url})"
                 ),
                 include_in_memory=True,
             )

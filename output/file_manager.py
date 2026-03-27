@@ -36,6 +36,10 @@ class FileManager:
         self.sample_dir.mkdir(parents=True, exist_ok=True)
         self._artifact_counter = 0
         self._artifacts: list[EvidenceArtifact] = []
+        # Evidence state — populated by custom actions, read by EvidenceAgent._package_result
+        self._extractions: list = []
+        self._checkpoints_met: list[str] = []
+        self._judgment = None
 
     def save_screenshot(
         self, data: bytes, label: str, source_url: str = "", checkpoint_ref: str | None = None

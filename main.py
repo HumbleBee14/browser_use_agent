@@ -64,8 +64,8 @@ def print_banner(task_name: str, sample_count: int, strategy: str, llm) -> None:
     console.print(f"  Task:     [cyan]{task_name}[/cyan]")
     console.print(f"  Strategy: [cyan]{strategy}[/cyan]")
     console.print(f"  Samples:  [cyan]{sample_count}[/cyan]")
-    console.print(f"  Provider: [cyan]{llm.provider}[/cyan]")
-    console.print(f"  Model:    [cyan]{llm.name}[/cyan]")
+    console.print(f"  Provider: [cyan]{getattr(llm, 'provider', type(llm).__name__)}[/cyan]")
+    console.print(f"  Model:    [cyan]{getattr(llm, 'name', 'unknown')}[/cyan]")
     console.rule()
     console.print()
 

@@ -113,7 +113,10 @@ class EvidenceAgent:
         # Build prompt via strategy
         prompt = self.strategy.build_prompt(self.task, self.sample)
 
-        # Vision mode: strategy decides based on task config
+        # Vision mode: strategy decides based on task config.
+        # NOTE: Evaluated once at start. browser-use Agent does not support
+        # toggling use_vision mid-run, so "no_auth" mode only checks the
+        # initial URL. Per-step re-evaluation requires upstream API support.
         initial_vision = self.strategy.should_use_vision(
             self.task, self.sample.url or ""
         )
@@ -121,10 +124,14 @@ class EvidenceAgent:
         # Fresh controller with evidence actions per sample
         controller = create_evidence_controller(self.file_manager)
 
-        # Browser profile with headless and download path config
+        # Browser profile with headless, domain allowlist, and page load tuning.
+        # JS-heavy sites (GitHub) never fully idle — reduce wait to avoid timeouts.
         browser_profile = BrowserProfile(
             headless=self.headless,
             allowed_domains=self.task.allowed_domains or None,
+            wait_for_network_idle_page_load_time=5.0,
+            minimum_wait_page_load_time=0.5,
+            wait_between_actions=0.5,
         )
 
         # Step callback for live progress — signature: (BrowserStateSummary, AgentOutput, int)
@@ -166,22 +173,20 @@ class EvidenceAgent:
         """Convert browser-use AgentHistoryList into our SampleResult."""
         completed_at = datetime.now()
 
-        # Collect extracted fields from file_manager (set by record_fields action)
-        extracted_fields = getattr(self.file_manager, "_extractions", [])
+        # Collect evidence state from file_manager (populated by custom actions)
+        extracted_fields = self.file_manager._extractions
+        checkpoints_met = self.file_manager._checkpoints_met
+        judgment = self.file_manager._judgment
 
-        # Collect checkpoints met (set by mark_checkpoint action)
-        checkpoints_met = getattr(self.file_manager, "_checkpoints_met", [])
-
-        # Collect judgment (set by make_judgment action)
-        judgment = getattr(self.file_manager, "_judgment", None)
-
-        # Build richer action log from history
+        # Build action log from history — use max length across all lists
+        # to avoid silently dropping entries when lists diverge
         action_log = []
         urls = history.urls() if hasattr(history, "urls") else []
         action_names = history.action_names() if hasattr(history, "action_names") else []
         action_results = history.extracted_content() if hasattr(history, "extracted_content") else []
 
-        for i in range(max(len(action_names), 1) if action_names else 0):
+        log_length = max(len(action_names), len(urls), len(action_results))
+        for i in range(log_length):
             action_log.append(
                 ActionLogEntry(
                     step=i + 1,
