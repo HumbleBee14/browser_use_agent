@@ -1,0 +1,30 @@
+{
+  "task_id": "github_discovery",
+  "phase": "discovery",
+  "start_url": "https://github.com/orgs/{org}/people",
+
+  "system_prompt": "You are a browser agent collecting member profile URLs from a GitHub organization people page. Look at the page and find all member profile links. Each member appears as a link with their username. Ignore navigation links, footer links, and organization links. Collect the username and profile URL for each member visible on the page. If there are more pages, navigate to the next page. When a page has no member links, call done.",
+
+  "goal": "Collect all visible member usernames and profile URLs from this GitHub org page. Return them as a list of objects with 'username' and 'url' fields. If the page is paginated, navigate through pages. Stop when no more members are found.",
+
+  "keywords": ["member", "people", "username", "profile", "avatar", "followers"],
+
+  "output_schema": {
+    "members": "array"
+  },
+
+  "max_steps": 30,
+
+  "required_fields": ["members"],
+  "required_artifacts": [],
+
+  "judgment_required": false,
+  "judgment_question": null,
+  "judgment_output_schema": null,
+
+  "pagination": true,
+  "stop_condition": "page returns zero member profile links",
+
+  "input_schema": {},
+  "auth_profile": null
+}

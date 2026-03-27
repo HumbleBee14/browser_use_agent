@@ -171,6 +171,107 @@ def test_batch_summary_counts():
         assert review == 1
 
 
+# ---- orchestration logic (mocked) ----
+
+def test_resume_skips_completed_samples():
+    """run_batch should skip samples that already have status=done."""
+    from main import get_completed_samples
+
+    with tempfile.TemporaryDirectory() as tmp:
+        ev = Path(tmp)
+        # Pre-create 2 completed samples
+        for sid in ["s1", "s2"]:
+            d = ev / sid; d.mkdir()
+            (d / "result.json").write_text(json.dumps({"sample_id": sid, "status": "done"}))
+
+        completed = get_completed_samples(ev)
+        all_samples = [
+            SampleInput(sample_id="s1", url="https://a.com"),
+            SampleInput(sample_id="s2", url="https://b.com"),
+            SampleInput(sample_id="s3", url="https://c.com"),
+        ]
+        pending = [s for s in all_samples if s.sample_id not in completed]
+
+        assert len(pending) == 1
+        assert pending[0].sample_id == "s3"
+
+
+def test_gather_exception_is_surfaced():
+    """Worker exceptions from gather should be detectable, not silently lost."""
+    import asyncio
+
+    async def failing_worker():
+        raise RuntimeError("browser crashed")
+
+    async def ok_worker():
+        return "s1"
+
+    async def run():
+        results = await asyncio.gather(
+            ok_worker(), failing_worker(),
+            return_exceptions=True,
+        )
+        # Verify exceptions are in the results list
+        exceptions = [r for r in results if isinstance(r, Exception)]
+        assert len(exceptions) == 1
+        assert "browser crashed" in str(exceptions[0])
+        # Verify successful results are also present
+        successes = [r for r in results if not isinstance(r, Exception)]
+        assert successes == ["s1"]
+
+    asyncio.run(run())
+
+
+def test_discovered_samples_invalid_are_dropped():
+    """Samples missing required input_schema fields should be filtered out."""
+    spec = TaskSpec(
+        task_id="test", phase="execution", system_prompt="x", goal="x",
+        input_schema={"name": "string", "company": "string | null"},
+    )
+    required_cols = [k for k, v in spec.input_schema.items() if "null" not in v]
+
+    samples = [
+        SampleInput(sample_id="p1", url="", extra={"name": "Alice"}),       # valid
+        SampleInput(sample_id="p2", url="", extra={"company": "ACME"}),      # missing 'name'
+        SampleInput(sample_id="p3", url="", extra={"name": "Bob", "company": "X"}),  # valid
+    ]
+
+    valid = []
+    for s in samples:
+        all_fields = {"sample_id": s.sample_id, "url": s.url, **s.extra}
+        missing = [c for c in required_cols if c not in all_fields or not all_fields[c]]
+        if not missing:
+            valid.append(s)
+
+    assert len(valid) == 2
+    assert valid[0].sample_id == "p1"
+    assert valid[1].sample_id == "p3"
+
+
+def test_collision_safe_sample_ids():
+    """Duplicate sample_ids should get _2, _3 suffixes, not be dropped."""
+    items = [
+        {"name": "John Smith", "company": "A"},
+        {"name": "John Smith", "company": "B"},
+        {"name": "John Smith", "company": "C"},
+    ]
+
+    seen = set()
+    ids = []
+    for item in items:
+        sid = item.get("name", "").replace(" ", "_").lower() or "sample"
+        original_sid = sid
+        counter = 1
+        while sid in seen:
+            counter += 1
+            sid = f"{original_sid}_{counter}"
+        seen.add(sid)
+        ids.append(sid)
+
+    assert ids == ["john_smith", "john_smith_2", "john_smith_3"]
+    assert len(set(ids)) == 3  # all unique
+
+
 # ---- runner ----
 
 if __name__ == "__main__":
