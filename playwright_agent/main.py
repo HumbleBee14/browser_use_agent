@@ -13,6 +13,9 @@ Usage:
 
   # Discovery + Execution
   python main.py --task tasks/github_profile.json --discover tasks/github_discovery.json --start-url https://github.com/orgs/microsoft/people
+
+  # Resume a previous run
+  python main.py --task tasks/github_profile.json --input samples.csv --resume evidence/run_2026-03-27_140000
 """
 
 from __future__ import annotations
@@ -34,19 +37,42 @@ from rich.table import Table
 
 import config
 import worker
+from discover import discover
 from models.task import TaskSpec, SampleInput, load_task_spec
 from tools.output import merge_results_to_csv
 
 console = Console()
 
 
-def load_samples(input_path: str) -> list[SampleInput]:
-    """Load samples from a CSV file."""
-    samples = []
-    with open(input_path, newline="", encoding="utf-8") as f:
+def load_samples(input_path: str, task_spec: TaskSpec | None = None) -> list[SampleInput]:
+    """Load samples from a CSV file.
+
+    If task_spec has input_schema, validates that required columns exist.
+    """
+    path = Path(input_path)
+    if not path.exists():
+        raise FileNotFoundError(f"Input file not found: {input_path}")
+
+    with open(path, newline="", encoding="utf-8") as f:
         reader = csv.DictReader(f)
+        headers = reader.fieldnames or []
+
+        # Validate CSV columns against input_schema if defined
+        if task_spec and task_spec.input_schema:
+            missing_cols = [
+                col for col, typ in task_spec.input_schema.items()
+                if "null" not in typ and col not in headers and col != "sample_id" and col != "url"
+            ]
+            if missing_cols:
+                raise ValueError(
+                    f"CSV is missing required columns from input_schema: {missing_cols}. "
+                    f"CSV has: {headers}"
+                )
+
+        samples = []
         for row in reader:
             samples.append(SampleInput.from_csv_row(dict(row)))
+
     return samples
 
 
@@ -56,6 +82,8 @@ def get_completed_samples(evidence_dir: Path) -> set[str]:
     if not evidence_dir.exists():
         return completed
     for sample_dir in evidence_dir.iterdir():
+        if not sample_dir.is_dir():
+            continue
         result_file = sample_dir / "result.json"
         if result_file.exists():
             try:
@@ -111,7 +139,6 @@ async def run_batch(
             sample_id = await worker.run_sample(browser, sample, task_spec, evidence_dir)
 
             duration = time.time() - start
-            # Read result to get status
             result_path = evidence_dir / sample_id / "result.json"
             status = "unknown"
             if result_path.exists():
@@ -129,7 +156,6 @@ async def run_batch(
             )
             return sample_id
 
-    # Run all workers in parallel (bounded by semaphore)
     results = await asyncio.gather(
         *[_worker(s) for s in pending],
         return_exceptions=True,
@@ -142,7 +168,6 @@ async def run_batch(
     csv_path = evidence_dir.parent / "combined.csv"
     merge_results_to_csv(evidence_dir, csv_path, task_spec.output_schema)
 
-    # Print summary
     total_duration = time.time() - started_at
     _print_summary(evidence_dir, pending, total_duration, csv_path)
 
@@ -181,8 +206,17 @@ def _print_summary(evidence_dir: Path, samples: list[SampleInput], duration: flo
 async def run(args: argparse.Namespace) -> None:
     """Main entry point."""
     task_spec = load_task_spec(args.task)
-    evidence_dir = config.EVIDENCE_DIR / f"run_{datetime.now().strftime('%Y-%m-%d_%H%M%S')}"
-    evidence_dir.mkdir(parents=True, exist_ok=True)
+
+    # Determine evidence directory: resume existing or create new
+    if args.resume:
+        evidence_dir = Path(args.resume)
+        if not evidence_dir.exists():
+            console.print(f"[red]Resume directory not found: {args.resume}[/red]")
+            return
+        console.print(f"  [dim]Resuming from: {evidence_dir}[/dim]")
+    else:
+        evidence_dir = config.EVIDENCE_DIR / f"run_{datetime.now().strftime('%Y-%m-%d_%H%M%S')}"
+        evidence_dir.mkdir(parents=True, exist_ok=True)
 
     headless = args.headless if args.headless is not None else config.HEADLESS
     max_concurrent = args.concurrency or config.MAX_CONCURRENT
@@ -194,16 +228,34 @@ async def run(args: argparse.Namespace) -> None:
     console.print(f"  Concurrency: {max_concurrent}")
     console.print(f"  Headless:    {headless}")
 
-    # Load samples from input CSV or single --url
-    if args.input:
-        samples = load_samples(args.input)
+    # Phase 1: Discovery (optional)
+    if args.discover:
+        discovery_spec = load_task_spec(args.discover)
+        start_url = args.start_url
+        if not start_url:
+            console.print("[red]Error: --discover requires --start-url[/red]")
+            return
+
+        samples_csv = evidence_dir.parent / "samples.csv"
+        samples = await discover(
+            discovery_spec, start_url, samples_csv,
+            headless=headless,
+        )
+        if not samples:
+            console.print("[red]Discovery found no samples. Exiting.[/red]")
+            return
+        console.print(f"  Samples:     {len(samples)} (discovered)")
+
+    # Phase 2: Load samples from CSV or single URL
+    elif args.input:
+        samples = load_samples(args.input, task_spec)
         console.print(f"  Samples:     {len(samples)} (from {args.input})")
     elif args.url:
         sample_id = args.id or "sample_001"
         samples = [SampleInput(sample_id=sample_id, url=args.url)]
         console.print(f"  Sample:      {sample_id} ({args.url})")
     else:
-        console.print("[red]Error: Provide --input CSV or --url[/red]")
+        console.print("[red]Error: Provide --input CSV, --url, or --discover + --start-url[/red]")
         return
 
     console.print()
@@ -215,12 +267,24 @@ def main():
         description="Browser Evidence Agent — collect structured evidence from any website"
     )
     parser.add_argument("--task", required=True, help="Path to task spec JSON")
+
+    # Input modes (mutually exclusive in practice)
     parser.add_argument("--input", help="Path to samples CSV")
     parser.add_argument("--url", help="Single sample URL (use with --id)")
     parser.add_argument("--id", help="Sample ID for single URL mode")
+
+    # Discovery mode
+    parser.add_argument("--discover", help="Path to discovery task spec JSON")
+    parser.add_argument("--start-url", help="URL to start discovery from (use with --discover)")
+
+    # Resume
+    parser.add_argument("--resume", help="Path to existing run directory to resume")
+
+    # Options
     parser.add_argument("--concurrency", type=int, help=f"Max parallel browsers (default: {config.MAX_CONCURRENT})")
     parser.add_argument("--headless", action="store_true", default=None, help="Run headless")
     parser.add_argument("--no-headless", action="store_false", dest="headless", help="Run with visible browser")
+
     args = parser.parse_args()
     asyncio.run(run(args))
 

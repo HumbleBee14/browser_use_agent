@@ -3,9 +3,7 @@
 One sequential browser session. Navigates a start URL, paginates through it,
 and writes samples.csv (the work queue for Phase 2).
 
-The discovery agent uses the same agent_loop as execution, but with a
-discovery-phase task spec that tells the LLM to collect sample URLs
-instead of extracting evidence.
+Uses the same agent_loop as execution but with a discovery-phase task spec.
 
 Usage (standalone):
     python discover.py --task tasks/github_discovery.json --start-url https://github.com/orgs/microsoft/people --output samples.csv
@@ -17,6 +15,7 @@ import argparse
 import asyncio
 import csv
 import json
+import shutil
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -39,15 +38,10 @@ async def discover(
     start_url: str,
     output_csv: Path,
     headless: bool = False,
-    max_pages: int = 50,
 ) -> list[SampleInput]:
-    """Run discovery: navigate start URL, paginate, collect sample URLs.
+    """Run discovery: navigate start URL, paginate, collect samples.
 
-    The discovery task spec tells the LLM to extract a list of samples
-    (e.g., member URLs from an org page). The agent uses the same loop
-    but outputs to a temporary evidence folder.
-
-    Returns list of discovered SampleInput objects.
+    Returns list of discovered SampleInput objects and writes samples.csv.
     """
     console.print(f"  [dim]Discovery:[/dim] {start_url}")
     console.print(f"  [dim]Task:[/dim] {task_spec.task_id}")
@@ -64,12 +58,13 @@ async def discover(
     )
     page = await ctx.new_page()
 
-    # Use a temp evidence dir for discovery
+    # Use a unique discovery dir — clear any stale results first
     discovery_dir = config.EVIDENCE_DIR / "_discovery"
+    if discovery_dir.exists():
+        shutil.rmtree(discovery_dir)
     discovery_dir.mkdir(parents=True, exist_ok=True)
-    output_mgr = OutputManager(discovery_dir, "discovery")
 
-    # Create a sample pointing to the start URL
+    output_mgr = OutputManager(discovery_dir, "discovery")
     sample = SampleInput(sample_id="discovery", url=start_url)
 
     try:
@@ -85,52 +80,71 @@ async def discover(
     result_path = discovery_dir / "discovery" / "result.json"
     samples = []
 
-    if result_path.exists():
-        data = json.loads(result_path.read_text(encoding="utf-8"))
-        extracted = data.get("extracted", {})
+    if not result_path.exists():
+        console.print("[yellow]No discovery result produced.[/yellow]")
+        return samples
 
-        # The discovery spec outputs a "members" array or similar
-        # Try common keys: members, samples, urls, items
-        items = []
-        for key in ("members", "samples", "urls", "items", "results"):
-            if key in extracted and isinstance(extracted[key], list):
-                items = extracted[key]
-                break
+    data = json.loads(result_path.read_text(encoding="utf-8"))
+    if data.get("status") not in ("done", "needs_review"):
+        console.print(f"[yellow]Discovery status: {data.get('status')}[/yellow]")
+        return samples
 
-        # If the extracted data is a flat list of URLs/dicts
-        if not items and isinstance(extracted, list):
-            items = extracted
+    extracted = data.get("extracted", {})
 
-        seen = set()
-        for item in items:
-            if isinstance(item, dict):
-                sid = item.get("username") or item.get("id") or item.get("sample_id", "")
-                url = item.get("url") or item.get("href", "")
-            elif isinstance(item, str):
-                sid = item.split("/")[-1] if "/" in item else item
-                url = item
-            else:
-                continue
+    # Find the list of discovered items — try common keys
+    items = []
+    for key in ("members", "samples", "urls", "items", "results"):
+        if key in extracted and isinstance(extracted[key], list):
+            items = extracted[key]
+            break
 
-            if not sid or sid in seen:
-                continue
-            seen.add(sid)
-            samples.append(SampleInput(sample_id=sid, url=url))
+    if not items and isinstance(extracted, list):
+        items = extracted
 
-        console.print(f"  [green]Discovered {len(samples)} samples[/green]")
+    # Build SampleInput objects, preserving all fields from each item
+    seen = set()
+    for item in items:
+        if isinstance(item, dict):
+            sid = item.get("username") or item.get("id") or item.get("sample_id", "")
+            url = item.get("url") or item.get("href", "")
+            # Preserve all extra fields (name, company, etc.)
+            extra = {k: v for k, v in item.items() if k not in ("username", "id", "sample_id", "url", "href")}
+        elif isinstance(item, str):
+            sid = item.split("/")[-1] if "/" in item else item
+            url = item
+            extra = {}
+        else:
+            continue
 
-    # Write samples.csv
+        if not sid or sid in seen:
+            continue
+        seen.add(sid)
+        samples.append(SampleInput(sample_id=sid, url=url, extra=extra))
+
+    console.print(f"  [green]Discovered {len(samples)} samples[/green]")
+
+    # Write samples.csv — include all fields (sample_id, url, + any extras)
     if samples:
+        # Collect all unique extra field names across all samples
+        extra_keys = set()
+        for s in samples:
+            extra_keys.update(s.extra.keys())
+        extra_keys = sorted(extra_keys)
+
+        fieldnames = ["sample_id", "url", "discovered_at"] + extra_keys
+
         with open(output_csv, "w", newline="", encoding="utf-8") as f:
-            writer = csv.DictWriter(f, fieldnames=["sample_id", "url", "discovered_at"])
+            writer = csv.DictWriter(f, fieldnames=fieldnames, extrasaction="ignore")
             writer.writeheader()
             for s in samples:
-                writer.writerow({
+                row = {
                     "sample_id": s.sample_id,
                     "url": s.url,
                     "discovered_at": datetime.utcnow().isoformat() + "Z",
-                })
-        console.print(f"  [dim]Wrote {output_csv}[/dim]")
+                    **s.extra,
+                }
+                writer.writerow(row)
+        console.print(f"  [dim]Wrote {output_csv} ({len(fieldnames)} columns)[/dim]")
     else:
         console.print("[yellow]No samples discovered.[/yellow]")
 
