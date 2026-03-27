@@ -167,27 +167,39 @@ async def run(
             # Machine-checkable completion: verify required fields (use "is None" not "not" — 0/false are valid)
             missing = [f for f in task_spec.required_fields if f not in extracted or extracted[f] is None]
 
-            # Verify required artifacts were captured
+            # Verify required artifacts — match by label substring in filenames.
+            # required_artifacts: ["profile"] matches "01_profile.png"
+            # required_artifacts: ["screenshot"] matches "03_screenshot.png"
             missing_artifacts = []
             if task_spec.required_artifacts:
-                saved_labels = {a.filename.split("_", 1)[-1].rsplit(".", 1)[0] for a in output_mgr._artifacts}
+                saved_filenames = [a.filename for a in output_mgr._artifacts]
                 for req in task_spec.required_artifacts:
-                    if not any(req in label for label in saved_labels):
+                    if not any(req in fn for fn in saved_filenames):
                         missing_artifacts.append(req)
 
-            if (missing or missing_artifacts) and step < task_spec.max_steps:
+            if missing or missing_artifacts:
                 notice_parts = []
                 if missing:
                     notice_parts.append(f"Required fields missing: {missing}")
                 if missing_artifacts:
                     notice_parts.append(f"Required artifacts missing: {missing_artifacts}")
-                history.append({
-                    "step": step,
-                    "action": "system_notice",
-                    "result": ". ".join(notice_parts) + ". Try again.",
-                })
-                consecutive_failures += 1
-                continue
+
+                if step < task_spec.max_steps:
+                    # Bounce back — force agent to try again
+                    history.append({
+                        "step": step,
+                        "action": "system_notice",
+                        "result": ". ".join(notice_parts) + ". Try again.",
+                    })
+                    consecutive_failures += 1
+                    continue
+                else:
+                    # Last step — cannot retry. Write needs_review, not done.
+                    output_mgr.write_result(
+                        status="needs_review", extracted=extracted,
+                        errors=notice_parts, steps=step,
+                    )
+                    return
 
             # Extract judgment if present
             judgment = None

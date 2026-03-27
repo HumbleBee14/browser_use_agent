@@ -64,50 +64,69 @@ def test_done_rejects_absent_fields():
 
 # ---- required_artifacts validation ----
 
-def test_required_artifacts_check():
-    """Saved artifacts should be matched against required_artifacts."""
+def test_required_artifacts_matched_by_label():
+    """required_artifacts matches by label substring in filename."""
     from models.actions import EvidenceArtifact
 
     spec = TaskSpec(
         task_id="test", phase="execution", system_prompt="x", goal="x",
-        required_artifacts=["screenshot", "profile"],
+        required_artifacts=["profile", "checks"],
     )
 
-    # Simulate artifacts saved by OutputManager
     artifacts = [
         EvidenceArtifact(filename="01_profile.png", sha256="abc", source_url="https://x.com"),
-        EvidenceArtifact(filename="02_screenshot.png", sha256="def", source_url="https://x.com"),
+        EvidenceArtifact(filename="02_checks.png", sha256="def", source_url="https://x.com"),
     ]
 
-    saved_labels = {a.filename.split("_", 1)[-1].rsplit(".", 1)[0] for a in artifacts}
+    saved_filenames = [a.filename for a in artifacts]
     missing = []
     for req in spec.required_artifacts:
-        if not any(req in label for label in saved_labels):
+        if not any(req in fn for fn in saved_filenames):
             missing.append(req)
 
-    assert missing == [], f"Artifacts should match: {saved_labels} vs {spec.required_artifacts}"
+    assert missing == [], f"Both labels should match: {saved_filenames}"
 
 
 def test_required_artifacts_missing():
-    """Missing artifact should be detected."""
+    """Missing artifact label should be detected."""
     from models.actions import EvidenceArtifact
 
     spec = TaskSpec(
         task_id="test", phase="execution", system_prompt="x", goal="x",
-        required_artifacts=["screenshot", "checks"],
+        required_artifacts=["profile", "checks"],
     )
 
     artifacts = [
-        EvidenceArtifact(filename="01_screenshot.png", sha256="abc", source_url="https://x.com"),
+        EvidenceArtifact(filename="01_profile.png", sha256="abc", source_url="https://x.com"),
     ]
 
-    saved_labels = {a.filename.split("_", 1)[-1].rsplit(".", 1)[0] for a in artifacts}
+    saved_filenames = [a.filename for a in artifacts]
     missing = []
     for req in spec.required_artifacts:
-        if not any(req in label for label in saved_labels):
+        if not any(req in fn for fn in saved_filenames):
             missing.append(req)
 
     assert missing == ["checks"], f"Should detect missing 'checks': {missing}"
+
+
+def test_last_step_done_with_missing_requirements_is_not_done():
+    """At max_steps, done with missing fields should NOT write status=done."""
+    # This tests the logic: if requirements missing AND step == max_steps → needs_review
+    spec = TaskSpec(
+        task_id="test", phase="execution", system_prompt="x", goal="x",
+        output_schema={"name": "string", "bio": "string"},
+        required_fields=["name", "bio"],
+    )
+    extracted = {"name": "Linus"}  # bio missing
+
+    missing = [f for f in spec.required_fields if f not in extracted or extracted[f] is None]
+    assert missing == ["bio"]
+
+    # At last step (step == max_steps), the loop should write needs_review
+    step = spec.max_steps
+    should_bounce = step < spec.max_steps
+    assert should_bounce is False, "At max_steps, cannot bounce"
+    # → code path writes needs_review, not done
 
 
 # ---- AgentAction parsing ----

@@ -22,7 +22,7 @@
   "max_steps": 12,
 
   "required_fields": ["display_name"],
-  "required_artifacts": ["screenshot"],
+  "required_artifacts": ["profile"],
 
   "judgment_required": false,
   "judgment_question": null,
