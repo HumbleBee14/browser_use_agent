@@ -171,8 +171,8 @@ async def run_batch(
     await browser.close()
     await p.stop()
 
-    # Merge results into combined.csv
-    csv_path = evidence_dir.parent / "combined.csv"
+    # Merge results into combined.csv — inside the run folder, not shared
+    csv_path = evidence_dir / "combined.csv"
     merge_results_to_csv(evidence_dir, csv_path, task_spec.output_schema)
 
     total_duration = time.time() - started_at
