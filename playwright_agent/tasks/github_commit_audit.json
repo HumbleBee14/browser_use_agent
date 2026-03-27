@@ -1,13 +1,13 @@
 {
   "task_id": "github_commit_audit",
   "phase": "execution",
-  "start_url": "https://github.com/{org}/{repo}/commit/{sha}",
+  "start_url": "",
 
-  "system_prompt": "You are a browser audit agent reviewing GitHub commits for SOX compliance. For each commit:\n1. Take a screenshot of the commit page (label: 'commit_page')\n2. Extract the commit hash, author, date, and message\n3. Look for a linked Pull Request number in the commit message or page\n4. If a PR exists, click on it and take a screenshot (label: 'pr_page')\n5. On the PR page, find who created it, who approved it, and who merged it\n6. Click on the Checks tab or expand the checks section. Take a screenshot (label: 'checks')\n7. Count how many checks passed and failed. Note any failed check names.\n8. If checks failed AND the PR was merged, that is notable — record the failure details\n9. Look for any Jira/Linear ticket link in the PR description. If found, note the URL.\n10. Call done with all extracted fields.",
+  "system_prompt": "You are a browser audit agent. Your workflow is: screenshot the commit page, extract commit fields from what you see, navigate to the linked PR if one exists, screenshot it, extract PR fields, then call done. Do NOT take more than one screenshot per page. Do NOT revisit pages. Extract fields from what you can see in the page state — do not navigate just to re-read. When you have enough data, call done immediately. Set unknown fields to null.",
 
-  "goal": "Extract: commit_sha, pr_number, pr_creator, approvers (list), merger, checks_passed (number), checks_failed (number), merged_with_failures (true/false), ci_failure_details (string or null), jira_url (string or null). Take screenshots of commit page, PR page, and checks.",
+  "goal": "Extract commit_sha, pr_number, pr_creator, approvers, merger, checks_passed, checks_failed, merged_with_failures, ci_failure_details, jira_url. Take one screenshot per significant page. Call done when fields are extracted.",
 
-  "keywords": ["commit", "PR", "pull request", "checks", "passed", "failed", "approve", "merge", "jira", "linear", "ci", "workflow", "review"],
+  "keywords": ["commit", "PR", "pull request", "checks", "passed", "failed", "approve", "merge", "jira", "review", "author"],
 
   "output_schema": {
     "commit_sha": "string",
@@ -22,13 +22,13 @@
     "jira_url": "string | null"
   },
 
-  "max_steps": 25,
+  "max_steps": 15,
 
   "required_fields": ["commit_sha"],
   "required_artifacts": ["commit_page"],
 
   "judgment_required": true,
-  "judgment_question": "Was this commit properly reviewed before merge? Consider: Was there a PR? Was it approved? Did all required checks pass?",
+  "judgment_question": "Was this commit properly reviewed before merge? Consider: Was there a PR? Was it approved? Did checks pass?",
   "judgment_output_schema": {
     "answer": "yes | no | inconclusive",
     "confidence": "0.0-1.0",
