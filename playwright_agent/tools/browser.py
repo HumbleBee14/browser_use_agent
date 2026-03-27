@@ -38,6 +38,43 @@ async def _rate_limit(url: str) -> None:
         _last_request[domain] = time.time()
 
 
+async def _resolve_element(page: Page, selector: str, element_map: dict[str, str] | None):
+    """Resolve a selector to a Playwright Locator using 3 strategies.
+
+    Returns (locator, strategy_name) or (None, None) if not found.
+    Element map values are stored as "role:name" by dom_extractor.
+    """
+    # Strategy 1: Index-based via element_map (most reliable)
+    if element_map and selector.isdigit():
+        role_name = element_map.get(selector)
+        if role_name and ":" in role_name:
+            role, name = role_name.split(":", 1)
+            try:
+                locator = page.get_by_role(role, name=name)
+                if await locator.count() > 0:
+                    return locator.first, "index"
+            except Exception:
+                pass
+
+    # Strategy 2: Text-based
+    try:
+        locator = page.get_by_text(selector, exact=False)
+        if await locator.count() > 0:
+            return locator.first, "text"
+    except Exception:
+        pass
+
+    # Strategy 3: CSS selector (last resort)
+    try:
+        locator = page.locator(selector)
+        if await locator.count() > 0:
+            return locator.first, "css"
+    except Exception:
+        pass
+
+    return None, None
+
+
 async def _wait_stable(page: Page, timeout: float = 8000) -> None:
     """Wait for page to stabilize after navigation."""
     try:
@@ -62,93 +99,51 @@ async def goto(page: Page, url: str) -> ActionResult:
 async def click(page: Page, selector: str, element_map: dict[str, str] | None = None) -> ActionResult:
     """Click an element. Tries index → text → CSS selector in order."""
     try:
-        clicked = False
-
-        # Strategy 1: Index-based (from DOM extractor's map)
-        if element_map and selector.isdigit():
-            pw_selector = element_map.get(selector)
-            if pw_selector:
-                await page.click(pw_selector, timeout=5000)
-                clicked = True
-
-        # Strategy 2: Text-based
-        if not clicked:
-            try:
-                locator = page.get_by_text(selector, exact=False)
-                if await locator.count() > 0:
-                    await locator.first.click(timeout=5000)
-                    clicked = True
-            except (PlaywrightTimeout, Exception):
-                pass
-
-        # Strategy 3: CSS selector (last resort)
-        if not clicked:
-            try:
-                await page.click(selector, timeout=5000)
-                clicked = True
-            except (PlaywrightTimeout, Exception):
-                pass
-
-        if not clicked:
+        locator, strategy = await _resolve_element(page, selector, element_map)
+        if not locator:
             return ActionResult(
                 success=False,
                 error=f"Element not found: '{selector}'. Try a different selector or text.",
             )
 
+        await locator.click(timeout=5000)
         await _wait_stable(page)
-        return ActionResult(success=True, description=f"Clicked '{selector}'")
+        return ActionResult(success=True, description=f"Clicked '{selector}' (via {strategy})")
 
     except Exception as e:
         return ActionResult(success=False, error=f"Click error: {str(e)[:200]}")
 
 
 async def type_text(page: Page, selector: str, text: str, element_map: dict[str, str] | None = None) -> ActionResult:
-    """Fill an input field. Uses page.fill() which clears first."""
+    """Fill an input field. Uses locator.fill() which clears first."""
     try:
-        filled = False
+        locator, strategy = await _resolve_element(page, selector, element_map)
 
-        # Strategy 1: Index-based
-        if element_map and selector.isdigit():
-            pw_selector = element_map.get(selector)
-            if pw_selector:
-                await page.fill(pw_selector, text, timeout=5000)
-                filled = True
-
-        # Strategy 2: Label/placeholder text
-        if not filled:
+        # Also try label and placeholder (common for form fields)
+        if not locator:
             try:
-                locator = page.get_by_label(selector)
-                if await locator.count() > 0:
-                    await locator.first.fill(text, timeout=5000)
-                    filled = True
-            except (PlaywrightTimeout, Exception):
+                loc = page.get_by_label(selector)
+                if await loc.count() > 0:
+                    locator, strategy = loc.first, "label"
+            except Exception:
                 pass
 
-        # Strategy 3: Placeholder text
-        if not filled:
+        if not locator:
             try:
-                locator = page.get_by_placeholder(selector, exact=False)
-                if await locator.count() > 0:
-                    await locator.first.fill(text, timeout=5000)
-                    filled = True
-            except (PlaywrightTimeout, Exception):
+                loc = page.get_by_placeholder(selector, exact=False)
+                if await loc.count() > 0:
+                    locator, strategy = loc.first, "placeholder"
+            except Exception:
                 pass
 
-        # Strategy 4: CSS selector
-        if not filled:
-            try:
-                await page.fill(selector, text, timeout=5000)
-                filled = True
-            except (PlaywrightTimeout, Exception):
-                pass
-
-        if not filled:
+        if not locator:
             return ActionResult(
                 success=False,
                 error=f"Input not found: '{selector}'. Try a different selector.",
             )
 
-        return ActionResult(success=True, description=f"Typed '{text[:50]}' into '{selector}'")
+        await locator.fill(text, timeout=5000)
+        return ActionResult(success=True, description=f"Typed '{text[:50]}' into '{selector}' (via {strategy})")
 
     except Exception as e:
         return ActionResult(success=False, error=f"Type error: {str(e)[:200]}")
@@ -190,42 +185,22 @@ async def take_screenshot(page: Page, full_page: bool = True) -> bytes:
     Light theme is forced, animations disabled for deterministic output.
     """
     await page.emulate_media(color_scheme="light")
+    await page.set_viewport_size({"width": 1280, "height": 900})
     return await page.screenshot(full_page=full_page, type="png", animations="disabled")
 
 
 async def extract_text(page: Page, selector: str, element_map: dict[str, str] | None = None) -> ActionResult:
     """Read text content from an element."""
     try:
-        text = ""
-
-        # Strategy 1: Index-based
-        if element_map and selector.isdigit():
-            pw_selector = element_map.get(selector)
-            if pw_selector:
-                text = await page.inner_text(pw_selector, timeout=5000)
-
-        # Strategy 2: Text locator
-        if not text:
-            try:
-                locator = page.get_by_text(selector, exact=False)
-                if await locator.count() > 0:
-                    text = await locator.first.inner_text(timeout=5000)
-            except (PlaywrightTimeout, Exception):
-                pass
-
-        # Strategy 3: CSS selector
-        if not text:
-            try:
-                text = await page.inner_text(selector, timeout=5000)
-            except (PlaywrightTimeout, Exception):
-                pass
-
-        if text:
+        locator, strategy = await _resolve_element(page, selector, element_map)
+        if locator:
+            text = await locator.inner_text(timeout=5000)
             return ActionResult(
                 success=True,
-                description=f"Extracted {len(text)} chars",
-                extracted_text=text[:2000],  # cap at 2000 chars
+                description=f"Extracted {len(text)} chars (via {strategy})",
+                extracted_text=text[:2000],
             )
+
         return ActionResult(
             success=False,
             error=f"No text found for '{selector}'",

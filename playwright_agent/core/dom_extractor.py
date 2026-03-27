@@ -218,19 +218,23 @@ def _parse_aria_snapshot(raw: str) -> list[DOMNode]:
             if level_match:
                 node.level = int(level_match.group(1))
 
-            # Parse state
-            if "checked" in rest:
-                node.checked = "checked=true" in rest or "checked" in rest
-            if "selected" in rest:
+            # Parse state — must handle =false correctly
+            if "checked=false" in rest:
+                node.checked = False
+            elif "checked" in rest:
+                node.checked = True
+            if "selected=false" in rest:
+                node.selected = False
+            elif "selected" in rest:
                 node.selected = True
             if "expanded=false" in rest:
                 node.expanded = False
             elif "expanded" in rest:
                 node.expanded = True
 
-            # Build Playwright selector
+            # Build Playwright selector — stored as "role:name" for resolution
             if role in INTERACTIVE_ROLES and name:
-                node.pw_selector = f'get_by_role("{role}", name="{name}")'
+                node.pw_selector = f'{role}:{name}'
 
             # Look ahead for /url on next line
             if i + 1 < len(lines):

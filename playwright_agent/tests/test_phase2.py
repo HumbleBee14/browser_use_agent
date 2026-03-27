@@ -174,6 +174,70 @@ async def _test_screenshot_capture():
     return True
 
 
+async def _test_element_map_click():
+    """Prove that element_map from dom_extractor works with browser.click()."""
+    from tools.browser import click
+
+    p = await async_playwright().start()
+    browser = await p.chromium.launch(headless=True)
+    page = await browser.new_page()
+
+    await page.goto("https://github.com/torvalds", wait_until="domcontentloaded")
+    try:
+        await page.wait_for_load_state("networkidle", timeout=10000)
+    except:
+        pass
+
+    snap = await snapshot(page, keywords=["linux", "pinned"])
+
+    # Find a link node with a pw_selector in the element_map
+    link_index = None
+    for node in snap.nodes:
+        if node.role == "link" and node.name and str(node.index) in snap.element_map:
+            link_index = str(node.index)
+            break
+
+    assert link_index is not None, "No clickable link found in element_map"
+
+    # Click using the index — this is the path that was broken before
+    result = await click(page, link_index, snap.element_map)
+    assert result.success, f"Click failed: {result.error}"
+    assert "via index" in result.description
+
+    await browser.close()
+    await p.stop()
+    return True
+
+
+async def _test_state_parsing_false():
+    """Verify that checked=false and selected=false parse correctly."""
+    raw = """- checkbox "Accept terms" (checked=false)
+- tab "Settings" (selected=false)
+- tab "Profile" (selected)
+- option "English" (checked)
+"""
+    nodes = _parse_aria_snapshot(raw)
+    checkbox = next(n for n in nodes if n.role == "checkbox")
+    assert checkbox.checked is False, f"Expected False, got {checkbox.checked}"
+
+    tab_off = next(n for n in nodes if n.name == "Settings")
+    assert tab_off.selected is False, f"Expected False, got {tab_off.selected}"
+
+    tab_on = next(n for n in nodes if n.name == "Profile")
+    assert tab_on.selected is True
+
+    opt = next(n for n in nodes if n.name == "English")
+    assert opt.checked is True
+
+
+def test_state_parsing_false_values():
+    asyncio.run(_test_state_parsing_false())
+
+
+def test_element_map_click_integration():
+    asyncio.run(_test_element_map_click())
+
+
 def test_github_profile_integration():
     asyncio.run(_test_github_profile())
 

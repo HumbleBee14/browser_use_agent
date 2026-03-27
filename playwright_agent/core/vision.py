@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import base64
 
-import anthropic
+from anthropic import AsyncAnthropic
 from playwright.async_api import Page
 
 import config
@@ -29,6 +29,7 @@ async def capture_screenshot(page: Page, full_page: bool = True) -> bytes:
     - Animations disabled for deterministic output
     """
     await page.emulate_media(color_scheme="light")
+    await page.set_viewport_size({"width": 1280, "height": 900})
     return await page.screenshot(
         full_page=full_page,
         type="png",
@@ -80,10 +81,10 @@ async def analyze_screenshot(
         "text": question,
     })
 
-    client = anthropic.Anthropic(api_key=config.ANTHROPIC_API_KEY)
+    client = AsyncAnthropic(api_key=config.ANTHROPIC_API_KEY)
 
     try:
-        response = client.messages.create(
+        response = await client.messages.create(
             model=model,
             max_tokens=512,
             messages=[{"role": "user", "content": content}],
