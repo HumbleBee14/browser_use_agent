@@ -1,4 +1,0 @@
-sample_id,url
-blame_001,https://github.com/microsoft/vscode/blob/main/src/vs/editor/common/model/textModel.ts
-blame_002,https://github.com/microsoft/vscode/blob/main/src/vs/base/common/arrays.ts
-blame_003,https://github.com/microsoft/vscode/blob/main/package.json
