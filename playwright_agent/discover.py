@@ -120,8 +120,14 @@ async def discover(
         else:
             continue
 
-        if not sid or sid in seen:
+        if not sid:
             continue
+        # Collision-safe: append _2, _3, etc. instead of dropping duplicates
+        original_sid = sid
+        counter = 1
+        while sid in seen:
+            counter += 1
+            sid = f"{original_sid}_{counter}"
         seen.add(sid)
         samples.append(SampleInput(sample_id=sid, url=url, extra=extra))
 

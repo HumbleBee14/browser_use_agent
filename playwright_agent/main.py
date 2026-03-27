@@ -251,17 +251,24 @@ async def run(args: argparse.Namespace) -> None:
             console.print("[red]Discovery found no samples. Exiting.[/red]")
             return
 
-        # Validate discovered samples against execution task's input_schema
+        # Validate discovered samples — drop invalid ones instead of wasting browser time
         if task_spec.input_schema:
             required_cols = [k for k, v in task_spec.input_schema.items() if "null" not in v]
+            valid_samples = []
             for s in samples:
                 all_fields = {"sample_id": s.sample_id, "url": s.url, **s.extra}
                 missing = [c for c in required_cols if c not in all_fields or not all_fields[c]]
                 if missing:
                     console.print(
-                        f"[yellow]Warning: discovered sample '{s.sample_id}' "
-                        f"missing input_schema fields: {missing}[/yellow]"
+                        f"  [yellow]Dropped '{s.sample_id}': missing {missing}[/yellow]"
                     )
+                else:
+                    valid_samples.append(s)
+            if len(valid_samples) < len(samples):
+                console.print(
+                    f"  [dim]{len(samples) - len(valid_samples)} samples dropped for missing fields[/dim]"
+                )
+            samples = valid_samples
 
         console.print(f"  Samples:     {len(samples)} (discovered)")
 
