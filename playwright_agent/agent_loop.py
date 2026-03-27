@@ -22,6 +22,16 @@ from anthropic import AsyncAnthropic
 from playwright.async_api import Page
 
 import config
+
+# Module-level client — reused across all samples for connection pooling
+_client: AsyncAnthropic | None = None
+
+
+def _get_client() -> AsyncAnthropic:
+    global _client
+    if _client is None:
+        _client = AsyncAnthropic(api_key=config.ANTHROPIC_API_KEY, timeout=60.0)
+    return _client
 from core import dom_extractor, vision
 from log_setup import logger
 from models.actions import (
@@ -49,7 +59,7 @@ async def run(
     log = logger.bind(sample_id=sample.sample_id)
     log.info(f"Agent loop started | url={sample.url} | max_steps={task_spec.max_steps}")
 
-    client = AsyncAnthropic(api_key=config.ANTHROPIC_API_KEY, timeout=60.0)
+    client = _get_client()
     tools = action_tool_schema()
     history: list[dict] = []
     loop_counter: dict[tuple, int] = {}  # (url, action_name) → count
@@ -100,12 +110,17 @@ async def run(
             loop_counter=loop_counter,
         )
 
-        # ---- 3. DECIDE (LLM call) ----
+        # ---- 3. DECIDE (LLM call with prompt caching) ----
+        # System prompt + tools are static across all steps → cache them
         try:
             response = await client.messages.create(
                 model=config.LLM_MODEL,
                 max_tokens=1024,
-                system=task_spec.system_prompt,
+                system=[{
+                    "type": "text",
+                    "text": task_spec.system_prompt,
+                    "cache_control": {"type": "ephemeral"},
+                }],
                 messages=messages,
                 tools=tools,
                 tool_choice={"type": "any"},  # forces structured output — never prose

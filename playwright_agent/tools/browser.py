@@ -76,9 +76,24 @@ async def _resolve_element(page: Page, selector: str, element_map: dict[str, str
 
 
 async def _wait_stable(page: Page, timeout: float = 8000) -> None:
-    """Wait for page to stabilize after navigation."""
+    """Staged readiness: domcontentloaded → short stabilization → proceed.
+
+    Better than blind networkidle which either:
+    - wastes time on noisy background requests, or
+    - snapshots too early if meaningful content renders after initial idle.
+    """
+    # Stage 1: Wait for DOM to be loaded (fast, reliable)
     try:
-        await page.wait_for_load_state("networkidle", timeout=timeout)
+        await page.wait_for_load_state("domcontentloaded", timeout=timeout)
+    except PlaywrightTimeout:
+        pass
+
+    # Stage 2: Brief stabilization for SPAs that render after DOMContentLoaded
+    await asyncio.sleep(0.5)
+
+    # Stage 3: Try networkidle with short timeout — proceed if it doesn't settle
+    try:
+        await page.wait_for_load_state("networkidle", timeout=3000)
     except PlaywrightTimeout:
         pass  # JS-heavy pages may never fully idle — proceed anyway
 

@@ -1,7 +1,7 @@
 """DOM Extractor — converts Playwright a11y tree into compact LLM-ready text.
 
-Uses Playwright's aria_snapshot() (YAML-like a11y tree) as the primary
-perception method. Falls back to CDP Accessibility.getFullAXTree if needed.
+Primary: Playwright's aria_snapshot() (fast, native).
+Fallback: CDP Accessibility.getFullAXTree when aria_snapshot is empty/sparse (<5 nodes).
 
 Four-pass pruning pipeline:
   Pass 1: parse aria_snapshot into structured nodes
@@ -88,17 +88,29 @@ async def snapshot(page: Page, keywords: list[str] | None = None) -> DOMSnapshot
     url = page.url
     title = await page.title()
 
-    # Get aria_snapshot from the page body
+    # Primary: aria_snapshot (fast, native Playwright API)
+    raw = ""
     try:
         raw = await page.locator("body").aria_snapshot()
     except Exception:
-        raw = ""
+        pass
 
-    if not raw:
-        return DOMSnapshot(url=url, title=title, confidence=0.1, raw_text="")
+    all_nodes = _parse_aria_snapshot(raw) if raw else []
 
-    # Parse the YAML-like aria snapshot into structured nodes
-    all_nodes = _parse_aria_snapshot(raw)
+    # Fallback: CDP Accessibility.getFullAXTree when aria_snapshot is empty/sparse
+    if len(all_nodes) < 5:
+        try:
+            cdp = await page.context.new_cdp_session(page)
+            tree = await cdp.send("Accessibility.getFullAXTree")
+            cdp_nodes = tree.get("nodes", [])
+            all_nodes = _parse_cdp_ax_tree(cdp_nodes)
+            raw = f"[CDP fallback: {len(cdp_nodes)} raw nodes]"
+            await cdp.detach()
+        except Exception:
+            pass
+
+    if not all_nodes:
+        return DOMSnapshot(url=url, title=title, confidence=0.1, raw_text=raw)
 
     # Get page metrics for confidence
     metrics = await _get_page_metrics(page, all_nodes)
@@ -248,6 +260,53 @@ def _parse_aria_snapshot(raw: str) -> list[DOMNode]:
 
         i += 1
 
+    return nodes
+
+
+def _parse_cdp_ax_tree(cdp_nodes: list[dict]) -> list[DOMNode]:
+    """Parse CDP Accessibility.getFullAXTree response into DOMNode list.
+
+    Used as fallback when aria_snapshot() returns empty/sparse results.
+    CDP nodes have: role.value, name.value, properties[], etc.
+    """
+    nodes = []
+    for n in cdp_nodes:
+        role = n.get("role", {}).get("value", "")
+        name = n.get("name", {}).get("value", "")
+        if not role or role in ("none", "generic", "InlineTextBox", "RootWebArea"):
+            continue
+        if not name and role not in INTERACTIVE_ROLES:
+            continue
+
+        # Map CDP role names to standard ARIA roles
+        role_map = {
+            "StaticText": "text",
+            "InternalLink": "link",
+            "GenericContainer": "region",
+        }
+        role = role_map.get(role, role).lower()
+
+        node = DOMNode(role=role, name=name)
+
+        # Extract properties
+        for prop in n.get("properties", []):
+            pname = prop.get("name", "")
+            pval = prop.get("value", {}).get("value")
+            if pname == "level" and pval:
+                node.level = int(pval)
+            elif pname == "checked":
+                node.checked = pval == "true"
+            elif pname == "selected":
+                node.selected = pval == "true"
+            elif pname == "expanded":
+                node.expanded = pval == "true"
+            elif pname == "url" and pval:
+                node.url = str(pval)
+
+        if role in INTERACTIVE_ROLES and name:
+            node.pw_selector = f"{role}:{name}"
+
+        nodes.append(node)
     return nodes
 
 
