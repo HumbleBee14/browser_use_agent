@@ -191,6 +191,27 @@ class BatchOrchestrator:
 
     def _write_run_summary(self, batch: BatchResult) -> Path:
         """Write run_summary.json to the run directory."""
+        # Checkpoint pass rates
+        all_required_cps = [c.name for c in self.task.checkpoints if c.required]
+        cp_stats = {}
+        for cp_name in all_required_cps:
+            met = sum(1 for r in self._results if cp_name in r.checkpoints_met)
+            cp_stats[cp_name] = f"{met}/{len(self._results)}"
+
+        # Needs review reason breakdown
+        from collections import Counter
+        review_reasons = Counter()
+        for r in self._results:
+            for reason in r.needs_review_reasons:
+                review_reasons[reason.value] += 1
+
+        # Error summary (top errors, deduplicated)
+        error_summary = Counter()
+        for r in self._results:
+            for err in r.errors:
+                short = err.split("\n")[0][:100]
+                error_summary[short] += 1
+
         summary = {
             "run_id": self.run_dir.name,
             "task": self.task.name,
@@ -211,6 +232,9 @@ class BatchOrchestrator:
                     1,
                 )
             ),
+            "checkpoint_pass_rates": cp_stats,
+            "needs_review_reasons": dict(review_reasons) if review_reasons else {},
+            "top_errors": dict(error_summary.most_common(5)) if error_summary else {},
         }
         path = self.run_dir / "run_summary.json"
         path.write_text(json.dumps(summary, indent=2), encoding="utf-8")

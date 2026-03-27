@@ -475,3 +475,86 @@ Two reviews were performed — one external (ChatGPT) and one internal (automate
 > "Phase 2.5 was a hardening pass driven by external code review. Three categories of fix: evidence integrity (partial evidence preservation + artifact reference validation), runtime efficiency (3x faster batches via config tightening), and prompt precision (eliminating duplicate work). No architectural changes — same pipeline, same strategies, same models. Just making the existing design honest and fast."
 
 > "The key insight: in audit systems, a manifest that lies about what's on disk is worse than one that admits partial failure. We now always preserve whatever evidence was collected, even if the sample ultimately failed. And we validate every artifact reference the agent gives us against what actually exists on disk."
+
+---
+
+## Phase 3: Multi-Strategy Showcase & CLI Polish
+
+**Goal:** Demonstrate generality — 3 task types across 3 strategies, all from YAML. Add --dry-run for config validation without cost.
+
+### What Was Built
+
+#### 1. Form Fill Task Definition (`tasks/form_fill_demo.yaml`)
+- **What:** Third task type using the `FormFillStrategy` — fill forms on httpbin.org with data from CSV, submit, capture results.
+- **How it works:** The CSV has columns `customer_name`, `telephone`, `email` alongside `sample_id` and `url`. The task loader puts these into `SampleInput.extra_fields`. The `FormFillStrategy.build_prompt()` injects them as `FORM DATA TO FILL` in the agent prompt. The agent matches labels to form fields.
+- **Checkpoints:** `empty_form_screenshot` → `filled_form_screenshot` → `submission_result_screenshot` — captures the full form lifecycle.
+- **Why this matters for Andera:** This is the same pattern as filling audit forms, submitting evidence requests, or interacting with enterprise platforms. The agent fills, screenshots before/after, submits, and captures the result. Zero code changes from the core pipeline.
+- **Architectural point:** The `FormFillStrategy` class is 53 lines. It extends `SinglePageStrategy` with form-specific prompt rules. The entire form fill capability is: one strategy class + one YAML file + one CSV. That's the strategy pattern paying off.
+
+#### 2. `--dry-run` CLI Flag (`main.py`)
+- **What:** Validates task YAML, loads samples, shows all config in clean tables — without launching a browser or making LLM calls.
+- **Usage:** `python main.py --task tasks/github_commits.yaml --dry-run`
+- **What it shows:**
+  - Task configuration (name, strategy, timeouts, vision mode, judgment question)
+  - Output fields with types and required/optional status
+  - Evidence checkpoints with types and required status
+  - All samples with URLs and extra_fields
+- **Why this matters:** Config debugging without burning API credits or waiting for browsers. Catch YAML mistakes instantly. Also useful for demos — show the task structure before running it.
+- **Architectural point:** The dry-run doesn't instantiate an LLM or orchestrator. It validates through Pydantic model construction (TaskConfig, SampleInput) — if the YAML is malformed, Pydantic catches it here.
+
+#### 3. Richer `run_summary.json` (`agent/orchestrator.py`)
+- **What:** Added three new sections to the run summary:
+  - `checkpoint_pass_rates`: Per-checkpoint completion counts (e.g., `"commit_page_screenshot": "3/4"`)
+  - `needs_review_reasons`: Breakdown of why samples need review (e.g., `{"timeout": 2, "ambiguous_extraction": 1}`)
+  - `top_errors`: Most common error messages across all samples (truncated, deduplicated)
+- **Why:** A run summary that says "3 needs_review" is unhelpful. A summary that says "2 timed out, 1 had ambiguous extraction, commit_page_screenshot passed 3/4" tells you exactly what to fix.
+- **Example output:**
+  ```json
+  {
+    "checkpoint_pass_rates": {
+      "commit_page_screenshot": "3/4",
+      "commit_fields_extracted": "3/4"
+    },
+    "needs_review_reasons": {
+      "timeout": 1,
+      "ambiguous_extraction": 1
+    },
+    "top_errors": {
+      "Timeout after 90s": 1,
+      "author: value is None": 1
+    }
+  }
+  ```
+
+### The 3 Task Types — Same Pipeline, Different YAMLs
+
+| Task | Strategy | Fields | Checkpoints | Judgment |
+|------|----------|--------|-------------|----------|
+| GitHub Commit Audit | `graph_traversal` | 7 (hash, author, date, msg, files, has_pr, reviewed) | 3 (commit screenshot, fields, PR screenshot) | "Was this properly reviewed?" |
+| GitHub Issue Extraction | `single_page` | 7 (number, title, state, author, labels, date, comments) | 2 (issue screenshot, fields) | "Is this a bug report?" |
+| Form Fill Demo | `form_fill` | 2 (submitted, response_status) | 3 (empty form, filled form, submission result) | "Was submission successful?" |
+
+**Zero code changes** between these three. Different YAML, different CSV, same `main.py` command.
+
+### How to Run & Test
+
+```bash
+# Dry run — validate any task without cost
+python main.py --task tasks/github_commits.yaml --dry-run
+python main.py --task tasks/github_issues.yaml --dry-run
+python main.py --task tasks/form_fill_demo.yaml --dry-run
+
+# Run form fill demo (single sample)
+python main.py --task tasks/form_fill_demo.yaml --sample-id form_001 \
+  --url "https://httpbin.org/forms/post"
+
+# Run GitHub issues (single sample)
+python main.py --task tasks/github_issues.yaml --sample-id issue_001 \
+  --url "https://github.com/microsoft/vscode/issues/305609"
+```
+
+### How to Explain This Phase
+
+> "Phase 3 proved the architecture's generality. We added a form fill task and a GitHub issues task — both just YAML files, no code changes. The `--dry-run` flag lets you validate any task definition instantly. The richer run summary now shows checkpoint pass rates and error breakdowns, not just counts."
+
+> "The key demonstration: 3 task types (commit audit, issue extraction, form fill) across 3 strategies (graph_traversal, single_page, form_fill) — all running through the same CLI, same pipeline, same evidence packaging. New task = new YAML. New task family = one strategy class (~50 lines) + new YAML."

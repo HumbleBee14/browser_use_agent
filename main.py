@@ -118,6 +118,65 @@ def print_results(batch_result) -> None:
     console.print()
 
 
+def run_dry_run(task, samples) -> None:
+    """Validate config and show what would run — no browser, no LLM calls."""
+    console.print()
+    console.rule("[bold blue]Browser Evidence Agent — Dry Run[/bold blue]")
+    console.print()
+
+    # Task config
+    task_table = Table(title="Task Configuration")
+    task_table.add_column("Setting", style="cyan")
+    task_table.add_column("Value", style="white")
+    task_table.add_row("Name", task.name)
+    task_table.add_row("Strategy", task.strategy)
+    task_table.add_row("Max Steps", str(task.max_steps))
+    task_table.add_row("Timeout", f"{task.timeout_seconds}s")
+    task_table.add_row("Max Retries", str(task.max_retries))
+    task_table.add_row("Vision Mode", task.use_vision)
+    task_table.add_row("Judgment", task.judgment_question or "none")
+    console.print(task_table)
+
+    # Output fields
+    if task.output_fields:
+        console.print()
+        fields_table = Table(title="Output Fields")
+        fields_table.add_column("Field", style="cyan")
+        fields_table.add_column("Type", style="white")
+        fields_table.add_column("Required", style="white")
+        for f in task.output_fields:
+            req = "[green]yes[/green]" if f.required else "[dim]no[/dim]"
+            fields_table.add_row(f.name, f.type, req)
+        console.print(fields_table)
+
+    # Checkpoints
+    if task.checkpoints:
+        console.print()
+        cp_table = Table(title="Evidence Checkpoints")
+        cp_table.add_column("Checkpoint", style="cyan")
+        cp_table.add_column("Type", style="white")
+        cp_table.add_column("Required", style="white")
+        for c in task.checkpoints:
+            req = "[green]yes[/green]" if c.required else "[dim]no[/dim]"
+            cp_table.add_row(c.name, c.evidence_type.value, req)
+        console.print(cp_table)
+
+    # Samples
+    console.print()
+    sample_table = Table(title=f"Samples ({len(samples)})")
+    sample_table.add_column("ID", style="cyan")
+    sample_table.add_column("URL", style="white")
+    sample_table.add_column("Extra Fields", style="dim")
+    for s in samples:
+        extras = ", ".join(f"{k}={v}" for k, v in s.extra_fields.items()) if s.extra_fields else "-"
+        sample_table.add_row(s.sample_id, s.url or "-", extras)
+    console.print(sample_table)
+
+    console.print()
+    console.print("[green]Dry run complete. Config is valid.[/green]")
+    console.print()
+
+
 async def run_batch(args: argparse.Namespace) -> None:
     """Main batch execution flow."""
     # Load task config
@@ -142,6 +201,11 @@ async def run_batch(args: argparse.Namespace) -> None:
     if not samples:
         console.print("[red]ERROR: No samples to process[/red]")
         sys.exit(1)
+
+    # Dry run: validate and show config, then exit
+    if args.dry_run:
+        run_dry_run(task, samples)
+        return
 
     # Create LLM
     llm = create_llm()
@@ -202,6 +266,11 @@ Examples:
         action="store_true",
         default=None,
         help="Run browser in headless mode",
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Validate task config and list samples without running (no browser, no LLM)",
     )
     parser.add_argument(
         "--verbose", "-v", action="store_true", help="Enable debug logging"

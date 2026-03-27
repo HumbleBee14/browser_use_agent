@@ -1,0 +1,3 @@
+sample_id,url,customer_name,telephone,email
+form_001,https://httpbin.org/forms/post,John Smith,555-1234,john@example.com
+form_002,https://httpbin.org/forms/post,Jane Doe,555-5678,jane@example.com
