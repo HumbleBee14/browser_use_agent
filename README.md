@@ -33,6 +33,9 @@ cp .env.example .env
 ## Run
 
 ```bash
+# Dry run — validate task config and list samples instantly (no browser, no LLM, $0 cost)
+python main.py --task tasks/github_commits.yaml --dry-run
+
 # Single sample (quick test)
 python main.py --task tasks/demo.yaml --sample-id test_001 --url https://github.com/browser-use/browser-use
 
