@@ -84,6 +84,28 @@ python tests/test_phase1.py
 python -m pytest tests/ -v
 ```
 
+## Natural Language Mode (--prompt)
+
+No task spec needed. Just describe what you want in plain English:
+
+```bash
+# Extract profile data
+python main.py --prompt "Go to torvalds GitHub profile and extract display name, bio, location, followers, pinned repos"
+
+# Audit commits
+python main.py --prompt "Go to microsoft/vscode on GitHub, check the last 3 commits, extract who authored each, who approved the PR, and whether CI passed"
+
+# Extract from any site
+python main.py --prompt "Go to https://news.ycombinator.com and extract the top 5 post titles and their scores"
+```
+
+How it works:
+1. Claude converts your prompt into a structured task spec (fields, schema, system prompt)
+2. The generated spec is saved to `evidence/run_XXXX/generated_task_spec.json`
+3. The same agent loop executes it — identical to pre-built JSON specs
+
+---
+
 ## Adding a New Task
 
 1. Copy `tasks/_template.json` to `tasks/your_task.json`

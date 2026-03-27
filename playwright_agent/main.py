@@ -213,9 +213,10 @@ def _print_summary(evidence_dir: Path, samples: list[SampleInput], duration: flo
 
 async def run(args: argparse.Namespace) -> None:
     """Main entry point."""
-    task_spec = load_task_spec(args.task)
 
-    # Determine evidence directory: resume existing or create new
+    planned_samples = None
+
+    # Determine evidence directory
     if args.resume:
         evidence_dir = Path(args.resume)
         if not evidence_dir.exists():
@@ -225,6 +226,45 @@ async def run(args: argparse.Namespace) -> None:
     else:
         evidence_dir = config.EVIDENCE_DIR / f"run_{datetime.now().strftime('%Y-%m-%d_%H%M%S')}"
         evidence_dir.mkdir(parents=True, exist_ok=True)
+
+    # Load task spec from file OR generate from natural language prompt
+    if args.prompt:
+        from task_planner import plan
+        console.print(f"\n[bold]Planning from prompt:[/bold] {args.prompt}")
+        console.print("[dim]Calling Claude to generate task spec + samples...[/dim]")
+        task_spec, planned_samples = await plan(args.prompt)
+
+        # Log what the planner generated — visible in console + log file
+        console.print(f"\n[green]Generated Task Spec:[/green]")
+        console.print(f"  task_id:       {task_spec.task_id}")
+        console.print(f"  fields:        {list(task_spec.output_schema.keys())}")
+        console.print(f"  required:      {task_spec.required_fields}")
+        console.print(f"  max_steps:     {task_spec.max_steps}")
+        console.print(f"  judgment:      {task_spec.judgment_required}")
+        console.print(f"  system_prompt: [dim]{task_spec.system_prompt[:150]}...[/dim]")
+        console.print(f"\n[green]Samples ({len(planned_samples)}):[/green]")
+        for s in planned_samples[:10]:  # show first 10
+            console.print(f"  {s.sample_id}: {s.url}")
+        if len(planned_samples) > 10:
+            console.print(f"  ... and {len(planned_samples) - 10} more")
+        console.print()
+
+        logger.info(
+            f"Planner generated | task={task_spec.task_id} | "
+            f"fields={list(task_spec.output_schema.keys())} | "
+            f"samples={len(planned_samples)} | "
+            f"max_steps={task_spec.max_steps}"
+        )
+
+        # Save full generated spec for reference/debugging
+        (evidence_dir / "generated_task_spec.json").write_text(
+            json.dumps(task_spec.model_dump(), indent=2, default=str), encoding="utf-8"
+        )
+    elif args.task:
+        task_spec = load_task_spec(args.task)
+    else:
+        console.print("[red]Error: Provide --task or --prompt[/red]")
+        return
 
     # Initialize structured file logging in the evidence directory
     init_logging(evidence_dir)
@@ -239,8 +279,13 @@ async def run(args: argparse.Namespace) -> None:
     console.print(f"  Concurrency: {max_concurrent}")
     console.print(f"  Headless:    {headless}")
 
+    # Samples from planner (--prompt mode)
+    if planned_samples:
+        samples = planned_samples
+        console.print(f"  Samples:     {len(samples)} (from planner)")
+
     # Phase 1: Discovery (optional)
-    if args.discover:
+    elif args.discover:
         discovery_spec = load_task_spec(args.discover)
         start_url = args.start_url
         if not start_url:
@@ -302,7 +347,8 @@ def main():
     parser = argparse.ArgumentParser(
         description="Browser Evidence Agent — collect structured evidence from any website"
     )
-    parser.add_argument("--task", required=True, help="Path to task spec JSON")
+    parser.add_argument("--task", help="Path to task spec JSON")
+    parser.add_argument("--prompt", help="Natural language instruction (auto-generates task spec)")
 
     # Input modes (mutually exclusive in practice)
     parser.add_argument("--input", help="Path to samples CSV")

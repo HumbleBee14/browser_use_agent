@@ -169,7 +169,20 @@ async def run(
         action_result = await _dispatch(action, page, snap, output_mgr)
 
         result_desc = (action_result.description if action_result.success else action_result.error) or ""
-        log.info(f"Step {step} | {action.action} → {'OK' if action_result.success else 'FAIL'}: {result_desc[:120]}")
+
+        # Logger: step trace (file only, not console)
+        action_params = action.selector or action.url or action.label or action.direction or ""
+        log.info(
+            f"Step {step} | {action.action}({action_params[:50]}) → "
+            f"{'OK' if action_result.success else 'FAIL'}: {result_desc[:120]}"
+        )
+        # Logger: detailed debug (action payload, thinking, DOM stats)
+        log.debug(
+            f"Step {step} detail | action={action.model_dump(exclude_none=True)} | "
+            f"thinking={thinking[:200]} | dom_nodes={len(snap.nodes)} | confidence={snap.confidence:.2f}"
+        )
+        if action_result.extracted_text:
+            log.debug(f"Step {step} extracted | {action_result.extracted_text[:300]}")
 
         # Log the step
         output_mgr.log_step(StepRecord(

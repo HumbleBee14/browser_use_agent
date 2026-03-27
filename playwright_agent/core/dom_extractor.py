@@ -40,8 +40,8 @@ INTERACTIVE_ROLES = frozenset({
 # Roles to skip entirely (chrome/boilerplate)
 SKIP_ROLES = frozenset({"banner", "navigation", "contentinfo"})
 
-MAX_NODES = 40
-ZERO_SCORE_BUDGET = 20
+MAX_NODES = 120
+ZERO_SCORE_BUDGET = 60
 
 
 @dataclass
@@ -316,12 +316,18 @@ def _filter_semantic(nodes: list[DOMNode]) -> list[DOMNode]:
 
 
 def _keyword_score(nodes: list[DOMNode], keywords: list[str]) -> list[DOMNode]:
-    """Score by keyword relevance. Keep boosted + zero-score budget."""
+    """Score by keyword relevance. Keep boosted + interactive + zero-score budget.
+
+    Links and buttons are ALWAYS kept regardless of keyword match — they are
+    the most important elements for navigation and contain critical text
+    (titles, labels) that may not match task keywords.
+    """
     if not keywords:
         return nodes
 
     kw_lower = [k.lower() for k in keywords]
     boosted = []
+    always_keep = []  # links + buttons always kept
     rest = []
 
     for n in nodes:
@@ -329,10 +335,12 @@ def _keyword_score(nodes: list[DOMNode], keywords: list[str]) -> list[DOMNode]:
         score = sum(1 for k in kw_lower if k in text)
         if score > 0:
             boosted.append(n)
+        elif n.role in ("link", "button", "textbox", "combobox"):
+            always_keep.append(n)
         else:
             rest.append(n)
 
-    return boosted + rest[:ZERO_SCORE_BUDGET]
+    return boosted + always_keep + rest[:ZERO_SCORE_BUDGET]
 
 
 async def _get_page_metrics(page: Page, nodes: list[DOMNode]) -> PageMetrics:

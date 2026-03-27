@@ -31,8 +31,7 @@ async def capture_screenshot(page: Page, full_page: bool = True) -> bytes:
     - 1280x900 viewport
     - Animations disabled for deterministic output
     """
-    await page.emulate_media(color_scheme="light")
-    await page.set_viewport_size({"width": 1280, "height": 900})
+    # Light theme + viewport are set once in worker.py — don't re-set to avoid flickering
     return await page.screenshot(
         full_page=full_page,
         type="png",
