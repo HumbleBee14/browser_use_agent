@@ -1,0 +1,77 @@
+name: andera_form_download
+description: "Workday-style workflow: fill form, submit, screenshot result, download report/attachments"
+strategy: form_fill
+
+instructions: |
+  For each sample URL provided:
+
+  PHASE 1 — NAVIGATE AND CAPTURE EMPTY FORM
+  1. Navigate to the form URL.
+  2. Take ONE screenshot of the empty form (label: "empty_form").
+     Call mark_checkpoint with name "empty_form_captured".
+
+  PHASE 2 — FILL FORM
+  3. Fill in the form fields using the data provided in FORM DATA TO FILL below.
+     Match each value to the correct form field by label, name attribute, or placeholder text.
+  4. Take ONE screenshot of the filled form BEFORE submitting (label: "filled_form").
+     Call mark_checkpoint with name "filled_form_captured".
+
+  PHASE 3 — SUBMIT AND CAPTURE RESULT
+  5. Submit the form by clicking the submit/send button.
+  6. Wait for the result page to load.
+  7. Take ONE screenshot of the result/confirmation page (label: "submission_result").
+     Call mark_checkpoint with name "submission_result_captured".
+  8. Extract using record_fields:
+     - form_submitted: true/false
+     - response_status: the response text or confirmation message
+
+  PHASE 4 — DOWNLOAD ARTIFACTS (if applicable)
+  9. If the result page contains downloadable files, reports, or attachments:
+     - Use the download_file action with an explicit file URL for each.
+     - Record the downloaded filenames.
+  10. If there are tabs or sections with additional attachments:
+      - Click each tab, take a screenshot (label: "tab_N"), and download attachments.
+
+  PHASE 5 — FINISH
+  11. Use make_judgment to answer: "Was the form submitted successfully with correct data?"
+  12. Call done immediately.
+
+  RULES:
+  - Fill ALL fields before submitting. Do not submit partial forms.
+  - Take each screenshot ONCE. Do not repeat.
+  - If a download requires a direct file URL, provide the URL explicitly to download_file.
+  - If the form submission fails, record form_submitted as false with the error in response_status.
+
+input_file: "inputs/andera_form.csv"
+input_columns: ["sample_id", "url", "customer_name", "telephone", "email", "comments"]
+
+output_fields:
+  - name: form_submitted
+    type: bool
+    required: true
+    description: "Whether the form was submitted successfully"
+  - name: response_status
+    type: str
+    required: true
+    description: "Response text or confirmation after submission"
+
+checkpoints:
+  - name: empty_form_captured
+    evidence_type: screenshot
+    description: "Screenshot of the empty form"
+    required: true
+  - name: filled_form_captured
+    evidence_type: screenshot
+    description: "Screenshot of the filled form before submission"
+    required: true
+  - name: submission_result_captured
+    evidence_type: screenshot
+    description: "Screenshot of the result after submission"
+    required: true
+
+evidence_types: ["screenshot", "extraction", "judgment", "download"]
+max_steps: 20
+timeout_seconds: 120
+max_retries: 1
+use_vision: auto
+judgment_question: "Was the form submitted successfully with correct data?"

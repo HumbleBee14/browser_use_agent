@@ -1,0 +1,69 @@
+name: andera_linkedin_enrichment
+description: "Enrich a CSV of names by finding their LinkedIn profiles and extracting key info"
+strategy: graph_traversal
+
+instructions: |
+  For each person name provided:
+
+  1. Navigate to Google and search for: "<person_name> LinkedIn"
+     (Use the person_name from the SAMPLE extra fields below.)
+  2. From the search results, identify the most likely LinkedIn profile link.
+     - Prefer results from linkedin.com/in/
+     - If multiple candidates exist and identity is ambiguous, do NOT guess.
+       Instead, set all fields to "ambiguous" and mark needs_review.
+  3. If a clear LinkedIn profile is found, navigate to it.
+  4. Take ONE screenshot of the LinkedIn profile (label: "linkedin_profile").
+     Call mark_checkpoint with name "profile_captured".
+  5. Extract these fields using record_fields:
+     - linkedin_url: the LinkedIn profile URL
+     - school: most recent education / university
+     - current_company: where they currently work
+     - tenure: how long they've been at their current company (e.g., "2 years 3 months")
+  6. Call mark_checkpoint with name "profile_fields_extracted".
+  7. Use make_judgment to answer: "Is this the correct LinkedIn profile for the given name?"
+     Consider: does the name match? Is there only one strong candidate?
+  8. Call done.
+
+  RULES:
+  - If identity is ambiguous (multiple people with same name), do NOT guess. Set fields to "ambiguous".
+  - If LinkedIn profile is not accessible (login required), take a screenshot of the blocker and set fields to "login_required".
+  - Do not sign in to LinkedIn.
+  - Finish as fast as possible.
+
+input_file: "inputs/andera_linkedin.csv"
+input_columns: ["sample_id", "person_name"]
+
+output_fields:
+  - name: linkedin_url
+    type: url
+    required: true
+    description: "LinkedIn profile URL"
+  - name: school
+    type: str
+    required: true
+    description: "Most recent education / university"
+  - name: current_company
+    type: str
+    required: true
+    description: "Current employer"
+  - name: tenure
+    type: str
+    required: true
+    description: "Duration at current company"
+
+checkpoints:
+  - name: profile_captured
+    evidence_type: screenshot
+    description: "Screenshot of the LinkedIn profile"
+    required: true
+  - name: profile_fields_extracted
+    evidence_type: extraction
+    description: "All profile fields extracted"
+    required: true
+
+evidence_types: ["screenshot", "extraction", "judgment"]
+max_steps: 15
+timeout_seconds: 90
+max_retries: 1
+use_vision: auto
+judgment_question: "Is this the correct LinkedIn profile for the given name?"
