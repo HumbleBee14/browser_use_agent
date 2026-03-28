@@ -63,6 +63,8 @@ User Input                          Output
 └─────────────────┘
 ```
 
+![System Flow Diagram](assets/flow-daigram.jpg)
+
 ## Component-by-Component
 
 ### 1. Task Planner (`task_planner.py`)
@@ -82,6 +84,7 @@ The generated spec is saved to `evidence/run_XXXX/generated_task_spec.json` for 
 ### 2. Orchestrator (`main.py`)
 
 Coordinates the run:
+
 - Loads task spec (from file or planner)
 - Loads samples (from CSV, `--url`, or planner)
 - Checks `evidence/run_XXXX/` for already-completed samples → skips them (`--resume`)
@@ -102,6 +105,8 @@ All exceptions caught → written to `result.json`. Worker never crashes the bat
 
 ### 4. Agent Loop (`agent_loop.py`) — The Brain
 
+![Agent Loop](assets/agent_loop.jpg)
+
 A ReAct cycle that repeats until `done`, `fail`, or `max_steps`:
 
 **OBSERVE** — DOM extractor reads the page's accessibility tree via Playwright's `aria_snapshot()`. Raw tree (~2000 nodes) is pruned through 4 passes:
@@ -114,6 +119,7 @@ Pass 4: Trim to 120 nodes max
 ```
 
 Result: compact indexed text like:
+
 ```
 [0] [heading]  "Linus Torvalds"
 [1] [link]     "linux" → https://github.com/torvalds/linux
@@ -124,6 +130,7 @@ Result: compact indexed text like:
 If `dom_confidence < 0.6` (canvas/SVG-heavy pages), vision activates — takes a screenshot and asks Claude a targeted question.
 
 **DECIDE** — Sends to Claude via Anthropic SDK:
+
 - `system`: task spec's system_prompt (static, prompt-cached across steps)
 - `messages`: one user message with page state + last 5 actions + goal + output schema
 - `tools`: 9 action definitions
@@ -133,21 +140,22 @@ Claude returns exactly one tool call. Always.
 
 **ACT** — Dispatches the action to Playwright:
 
-| Action | Playwright Call | Element Resolution |
-|--------|----------------|--------------------|
-| `goto(url)` | `page.goto()` | Direct URL |
-| `click(selector)` | 3-strategy: index → text → CSS | `page.get_by_role()` / `page.get_by_text()` |
-| `type(selector, text)` | `page.fill()` | Same 3-strategy |
-| `scroll(direction)` | `page.mouse.wheel()` | N/A |
-| `screenshot(label)` | `page.screenshot()` | N/A, saves with SHA-256 |
-| `extract(selector)` | `locator.inner_text()` | Same 3-strategy |
-| `wait(selector)` | `wait_for_selector()` | Text or CSS |
-| `done(extracted)` | Validates + writes result | N/A |
-| `fail(note)` | Writes failure + exits | N/A |
+| Action                 | Playwright Call                | Element Resolution                          |
+| ---------------------- | ------------------------------ | ------------------------------------------- |
+| `goto(url)`            | `page.goto()`                  | Direct URL                                  |
+| `click(selector)`      | 3-strategy: index → text → CSS | `page.get_by_role()` / `page.get_by_text()` |
+| `type(selector, text)` | `page.fill()`                  | Same 3-strategy                             |
+| `scroll(direction)`    | `page.mouse.wheel()`           | N/A                                         |
+| `screenshot(label)`    | `page.screenshot()`            | N/A, saves with SHA-256                     |
+| `extract(selector)`    | `locator.inner_text()`         | Same 3-strategy                             |
+| `wait(selector)`       | `wait_for_selector()`          | Text or CSS                                 |
+| `done(extracted)`      | Validates + writes result      | N/A                                         |
+| `fail(note)`           | Writes failure + exits         | N/A                                         |
 
 Every action returns `ActionResult(success, description, error)` — never raises.
 
 **CHECK** — When agent calls `done`:
+
 1. Verify `required_fields` are present and not None (but 0/false are valid)
 2. Verify `required_artifacts` labels match saved screenshot filenames
 3. If missing + steps remain → bounce back with notice
@@ -155,6 +163,7 @@ Every action returns `ActionResult(success, description, error)` — never raise
 5. If all good → write `result.json` + `action_log.json`
 
 **SELF-CORRECTION:**
+
 - **Loop detection**: same `(url, action)` 3+ times → nudge message
 - **Spam detection**: same action type 3+ consecutive (screenshot, goto, scroll) → forced stop. Excludes `type`/`click` since form filling is legitimately repetitive.
 - **Failure recovery**: 3+ consecutive failures → inject list of visible interactive elements
@@ -182,7 +191,7 @@ if semantic_nodes < 10: score -= 0.3                 # barely any meaningful ele
 ```
 
 - **canvas_count**: `document.querySelectorAll('canvas').length` — charts, maps, drawing apps are invisible to DOM
-- **missing_aria_labels**: buttons/links/inputs that have *no* `aria-label` and *no* visible text (e.g., `<button><svg>...</svg></button>` — a hamburger menu icon). The agent can't click what it can't name
+- **missing_aria_labels**: buttons/links/inputs that have _no_ `aria-label` and _no_ visible text (e.g., `<button><svg>...</svg></button>` — a hamburger menu icon). The agent can't click what it can't name
 - **svg_count**: SVGs often represent visual-only status indicators (green checkmark, red X) that the DOM sees as `[img]` with no text
 - **semantic_nodes**: count of nodes with meaningful roles (heading, link, button, textbox, etc). Below 10 = page is mostly canvas/images or still loading
 
@@ -203,7 +212,7 @@ f"and any text rendered as images or SVGs."
 
 It's not "describe this page." It's: "here's what the DOM already captured, here's the task goal — what **visual** info is the DOM missing?"
 
-**Example**: Task is "check CI pipeline status." The page has green/red SVG checkmarks next to build steps. The DOM only sees `[img]` or `[svg]` with no text. Vision sees the screenshot and responds: *"The icon next to 'build/test' is a green checkmark — status is passing."*
+**Example**: Task is "check CI pipeline status." The page has green/red SVG checkmarks next to build steps. The DOM only sees `[img]` or `[svg]` with no text. Vision sees the screenshot and responds: _"The icon next to 'build/test' is a green checkmark — status is passing."_
 
 **The flow**: our code reads DOM → our code computes confidence → if low, our code takes a screenshot + builds the targeted question → Claude vision answers → the answer is appended to the DOM text that goes into the DECIDE step.
 
