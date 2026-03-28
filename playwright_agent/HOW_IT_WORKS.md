@@ -285,17 +285,59 @@ Written to the sample's evidence folder every 5 steps and on every `save_progres
 
 Monitor it live: `watch -n 1 cat evidence/run_XXXX/sample_id/checkpoint.json`
 
-### 3. Step Summary (Condensed History)
+### 3. LLM-Powered Step Summary
 
-Every 10 steps, older history is condensed into a one-line summary. The agent always sees:
+Every 10 steps, Claude (fast model — Haiku) summarizes the old history into 2-3 sentences:
+
+```
+Steps 1-10: Navigated to the merged PR list, clicked into PR #305569 by benibenj.
+Extracted title, author, and reviewer (justschen). Took screenshot of PR overview.
+Saved progress with PR #1 data and navigated back to the list.
+```
+
+The agent always sees in its prompt:
 - **Last 5 raw actions** (recent context)
-- **Condensed summaries** of earlier work (long-term memory)
+- **LLM-generated summaries** of earlier work (long-term memory, not raw steps)
 - **Full accumulated data** from save_progress (what was collected)
 - **Step budget** ("Step 16 of 40 — 24 remaining")
+- **Extracted text buffer** — all `extract` action results are also accumulated
 
-This keeps token cost flat while giving the agent awareness of its full journey.
+Uses the fast/cheap model so summary calls cost < $0.001 each.
 
-### 4. Crash Recovery
+### 4. Auto-Pagination
+
+When the agent clicks a "Next", "Load more", "Page 2", etc., the system detects it and grants **+3 bonus steps** to the step budget. This means pagination doesn't eat into the task's working budget:
+
+```
+Step 15 | click("Next page") → OK → Pagination detected → +3 bonus (effective_max=43)
+Step 25 | click("Load more")  → OK → Pagination detected → +3 bonus (effective_max=46)
+```
+
+Detection is keyword-based: `next`, `next page`, `load more`, `show more`, `older`, `newer`, `»`, `›`, etc.
+
+### 5. Watchdog (Stall Detection)
+
+If the agent hasn't produced new data (no `save_progress`, `extract`, or `screenshot`) for 5 consecutive steps, the watchdog injects a warning:
+
+```
+WARNING: You have not produced new data in 5 steps. You have 12 steps left.
+Either extract/save_progress with data, or call done with what you have,
+or call fail if the task cannot be completed.
+```
+
+This prevents the agent from burning steps on aimless navigation. If accumulated data exists, a checkpoint is also written so nothing is lost if the agent stalls out.
+
+### 6. Batch Chunking (Large-Scale Tasks)
+
+For tasks involving 10+ items with individual URLs (e.g., "extract all 200 org members"), the planner can flag `needs_discovery: true`. The orchestrator then:
+
+1. Runs a **discovery phase** — one agent paginates the listing page, collects all URLs
+2. Each discovered URL becomes a **separate parallel sample**
+3. Samples are distributed across N concurrent workers
+
+This means a "200 org members" task becomes 200 parallel workers (bounded by concurrency limit), each doing a simple 3-5 step extraction — much faster and more reliable than one agent doing 500+ steps.
+
+### 7. Crash Recovery
 
 If the agent hits `max_steps` or crashes, accumulated data is **not lost**:
 - `checkpoint.json` has the latest checkpoint

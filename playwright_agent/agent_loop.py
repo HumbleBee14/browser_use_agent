@@ -80,6 +80,9 @@ async def run(
     step_summaries: list[str] = []   # condensed summaries every SUMMARY_INTERVAL steps
     SUMMARY_INTERVAL = 10
     CHECKPOINT_INTERVAL = 5
+    WATCHDOG_STALL_LIMIT = 5         # steps without new data → force intervention
+    last_data_step = 0               # last step that produced new data
+    pagination_bonus = 0             # extra steps granted for pagination
 
     # Navigate to starting URL if provided — fail fast if unreachable
     if sample.url:
@@ -95,7 +98,10 @@ async def run(
             )
             return
 
-    for step in range(1, task_spec.max_steps + 1):
+    effective_max = task_spec.max_steps
+    for step in range(1, task_spec.max_steps + 200):  # hard ceiling with pagination bonus
+        if step > effective_max:
+            break
         # ---- 1. OBSERVE ----
         snap = await dom_extractor.snapshot(page, task_spec.keywords)
         page_state = dom_extractor.serialize(snap)
@@ -247,14 +253,21 @@ async def run(
             consecutive_failures = 0
             continue
 
-        # ---- STEP SUMMARY: condense old history every N steps ----
+        # ---- EXTRACT → ACCUMULATED BUFFER: extract action feeds long-term memory ----
+        if action.action == "extract" and action_result.success and action_result.extracted_text:
+            if "extracted_texts" not in accumulated:
+                accumulated["extracted_texts"] = []
+            accumulated["extracted_texts"].append({
+                "step": step,
+                "selector": action.selector or "",
+                "text": action_result.extracted_text[:500],
+            })
+
+        # ---- STEP SUMMARY: LLM-powered condensation every N steps ----
         if step > 0 and step % SUMMARY_INTERVAL == 0 and len(history) > 5:
-            old_actions = history[:-5]
-            summary_text = "; ".join(
-                f"s{h['step']}:{h['action']}" for h in old_actions
-            )
-            step_summaries.append(f"Steps {old_actions[0]['step']}-{old_actions[-1]['step']}: {summary_text}")
-            log.debug(f"Step {step} | History condensed | {len(old_actions)} steps → summary")
+            summary = await _summarize_steps(client, history[:-5], task_spec.goal, log)
+            step_summaries.append(summary)
+            log.info(f"Step {step} | LLM summary generated | {summary[:100]}")
 
         # ---- AUTO-CHECKPOINT: write checkpoint.json every N steps ----
         if step > 0 and step % CHECKPOINT_INTERVAL == 0:
@@ -376,15 +389,43 @@ async def run(
         else:
             consecutive_failures += 1
 
+        # ---- AUTO-PAGINATION: detect "next page" clicks and grant bonus steps ----
+        if (action.action == "click" and action_result.success
+                and _is_pagination_click(action.selector or "", action_result.description)):
+            pagination_bonus += 3
+            effective_max = task_spec.max_steps + pagination_bonus
+            log.info(f"Step {step} | Pagination detected → +3 bonus steps (effective_max={effective_max})")
+
+        # ---- WATCHDOG: detect stalls and force intervention ----
+        if (action.action == "save_progress"
+                or (action.action == "extract" and action_result.success)
+                or action.action == "screenshot"):
+            last_data_step = step
+
+        steps_since_data = step - last_data_step
+        if steps_since_data >= WATCHDOG_STALL_LIMIT and step < effective_max:
+            log.warning(f"Step {step} | Watchdog: {steps_since_data} steps without new data")
+            if accumulated:
+                output_mgr.write_checkpoint(step, accumulated, progress_notes, status="watchdog_stall")
+            history.append({
+                "step": step,
+                "action": "system_notice",
+                "result": (
+                    f"WARNING: You have not produced new data in {steps_since_data} steps. "
+                    f"You have {effective_max - step} steps left. Either extract/save_progress with data, "
+                    f"or call done with what you have, or call fail if the task cannot be completed."
+                ),
+            })
+            last_data_step = step  # reset to avoid spamming
+
     # Exhausted max_steps without done/fail
-    log.warning(f"Exhausted {task_spec.max_steps} steps without completing")
-    # Save accumulated data so partial work isn't lost
+    log.warning(f"Exhausted {effective_max} steps (base={task_spec.max_steps}, pagination_bonus={pagination_bonus})")
     if accumulated:
         output_mgr.write_checkpoint(step, accumulated, progress_notes, status="max_steps_exceeded")
     output_mgr.write_result(
         status="failed",
         extracted=accumulated or {},
-        errors=[f"Exhausted {task_spec.max_steps} steps without completing"],
+        errors=[f"Exhausted {effective_max} steps without completing (base={task_spec.max_steps}, bonus={pagination_bonus})"],
         steps=step,
     )
 
@@ -438,6 +479,19 @@ async def _dispatch(
         return ActionResult(success=False, error=f"Dispatch error: {str(e)[:200]}")
 
 
+PAGINATION_KEYWORDS = frozenset({
+    "next", "next page", "load more", "show more", "older", "newer",
+    "page 2", "page 3", "page 4", "page 5", "»", "›", "→",
+    "previous", "prev", "back", "forward",
+})
+
+
+def _is_pagination_click(selector: str, result_desc: str) -> bool:
+    """Detect if a click was a pagination action (next page, load more, etc.)."""
+    combined = f"{selector} {result_desc}".lower()
+    return any(kw in combined for kw in PAGINATION_KEYWORDS)
+
+
 def _deep_merge(base: dict, update: dict) -> None:
     """Merge update into base, appending to lists and recursing into dicts."""
     for key, val in update.items():
@@ -447,6 +501,41 @@ def _deep_merge(base: dict, update: dict) -> None:
             _deep_merge(base[key], val)
         else:
             base[key] = val
+
+
+async def _summarize_steps(
+    client: AsyncAnthropic,
+    steps: list[dict],
+    goal: str,
+    log,
+) -> str:
+    """Ask Claude (fast model) to summarize a block of steps into 2-3 sentences.
+
+    Uses the cheap/fast model to keep costs low. Falls back to mechanical
+    summary if the LLM call fails.
+    """
+    step_text = "\n".join(
+        f"Step {h['step']}: {h['action']}({json.dumps(h.get('params', {}), default=str)[:80]}) → {h.get('result', '')[:80]}"
+        for h in steps
+    )
+    try:
+        response = await client.messages.create(
+            model=config.LLM_FAST_MODEL,
+            max_tokens=200,
+            messages=[{
+                "role": "user",
+                "content": (
+                    f"Summarize these browser agent steps in 2-3 sentences. "
+                    f"Focus on what was accomplished and what data was collected. "
+                    f"Task goal: {goal}\n\nSteps:\n{step_text}"
+                ),
+            }],
+        )
+        return f"Steps {steps[0]['step']}-{steps[-1]['step']}: {response.content[0].text.strip()}"
+    except Exception as e:
+        log.debug(f"LLM summary failed, using mechanical fallback: {str(e)[:100]}")
+        actions = "; ".join(f"s{h['step']}:{h['action']}" for h in steps)
+        return f"Steps {steps[0]['step']}-{steps[-1]['step']}: {actions}"
 
 
 def _build_messages(

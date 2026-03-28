@@ -229,10 +229,24 @@ async def run(args: argparse.Namespace) -> None:
 
     # Load task spec from file OR generate from natural language prompt
     if args.prompt:
-        from task_planner import plan
+        from task_planner import plan_chunked
         console.print(f"\n[bold]Planning from prompt:[/bold] {args.prompt}")
         console.print("[dim]Calling Claude to generate task spec + samples...[/dim]")
-        task_spec, planned_samples = await plan(args.prompt)
+        task_spec, discovery_spec, planned_samples = await plan_chunked(args.prompt)
+
+        # If planner flagged discovery needed, run it to collect URLs
+        if discovery_spec:
+            console.print(f"\n[yellow]Large-scale task detected — running discovery first...[/yellow]")
+            discovery_url = getattr(task_spec, "_discovery_url", "")
+            console.print(f"  Discovery URL: {discovery_url}")
+            samples_csv = evidence_dir / "discovered_samples.csv"
+            disc_samples = await discover(
+                discovery_spec, discovery_url, samples_csv,
+                headless=args.headless if args.headless is not None else config.HEADLESS,
+            )
+            if disc_samples:
+                planned_samples = disc_samples
+                console.print(f"  [green]Discovered {len(disc_samples)} samples[/green]")
 
         # Log what the planner generated — visible in console + log file
         console.print(f"\n[green]Generated Task Spec:[/green]")
