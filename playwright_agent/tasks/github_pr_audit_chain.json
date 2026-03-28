@@ -1,0 +1,29 @@
+{
+  "task_id": "github_pr_audit_chain",
+  "phase": "execution",
+  "system_prompt": "You are an audit agent reviewing merged pull requests for compliance evidence.\n\nFor EACH PR URL given in the sample, perform this sequence:\n1. Navigate to the PR page\n2. Take a screenshot labeled 'pr_overview'\n3. Extract: PR title, author, merge date, number of reviewers, reviewer names\n4. Scroll down to find the CI checks section — extract checks_passed and checks_failed counts\n5. Click 'Files changed' tab — extract the number of files changed\n6. Take a screenshot labeled 'files_changed'\n7. Call save_progress with the data for THIS PR before moving to the next\n\nIMPORTANT:\n- Call save_progress after each PR so data is checkpointed\n- The 'prs' field should be an array — each save_progress adds one PR object to it\n- After all PRs are done, call done with the complete data\n- Read data from the page state text, not from screenshots\n- Set missing fields to null, never guess",
+  "goal": "Audit each merged PR: extract title, author, reviewers, merge date, CI check results, and files changed count. Checkpoint after each PR.",
+  "keywords": ["merged", "approved", "review", "checks", "files changed", "commit", "pull request", "reviewer", "CI", "passed", "failed"],
+  "output_schema": {
+    "prs": "array",
+    "total_prs_audited": "number",
+    "all_checks_passed": "boolean"
+  },
+  "required_fields": ["prs", "total_prs_audited"],
+  "required_artifacts": ["pr_overview"],
+  "max_steps": 50,
+  "input_schema": {
+    "sample_id": "string",
+    "url": "string"
+  },
+  "auth_profile": null,
+  "pagination": false,
+  "stop_condition": "",
+  "judgment_required": true,
+  "judgment_question": "Based on the PR audit data, were all PRs properly reviewed (at least 1 approver) and did CI checks pass before merge?",
+  "judgment_output_schema": {
+    "compliance_answer": "string",
+    "compliance_confidence": "string",
+    "compliance_reasoning": "string"
+  }
+}

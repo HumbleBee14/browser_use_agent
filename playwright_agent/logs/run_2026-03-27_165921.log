@@ -1,0 +1,99 @@
+2026-03-27 16:59:21.477 | INFO     |               system | Logging initialized → C:\Users\Humblebee\Documents\GitHub\browser_use_agent\playwright_agent\logs\run_2026-03-27_165921
+2026-03-27 16:59:21.486 | INFO     |               system | Batch started | task=github_profile | samples=3 | concurrency=3 | model=claude-sonnet-4-6
+2026-03-27 16:59:22.858 | INFO     |             torvalds | Worker started
+2026-03-27 16:59:22.886 | INFO     |           gvanrossum | Worker started
+2026-03-27 16:59:22.894 | INFO     |                  DHH | Worker started
+2026-03-27 16:59:23.645 | INFO     |             torvalds | Agent loop started | url=https://github.com/torvalds | max_steps=12
+2026-03-27 16:59:24.556 | INFO     |                  DHH | Agent loop started | url=https://github.com/dhh | max_steps=12
+2026-03-27 16:59:24.557 | INFO     |           gvanrossum | Agent loop started | url=https://github.com/gvanrossum | max_steps=12
+2026-03-27 16:59:35.225 | DEBUG    |                  DHH | Step 1 | DOM confidence=0.74 | nodes=101
+2026-03-27 16:59:37.427 | DEBUG    |             torvalds | Step 1 | DOM confidence=0.72 | nodes=71
+2026-03-27 16:59:40.475 | INFO     |                  DHH | Step 1 | screenshot(profile) → OK: Screenshot saved: 01_profile.png (sha256: 60cb38cdbd04...)
+2026-03-27 16:59:40.476 | DEBUG    |                  DHH | Step 1 detail | action={'action': 'screenshot', 'label': 'profile'} | thinking= | dom_nodes=101 | confidence=0.74
+2026-03-27 16:59:40.804 | DEBUG    |           gvanrossum | Step 1 | DOM confidence=0.68 | nodes=72
+2026-03-27 16:59:41.388 | DEBUG    |                  DHH | Step 2 | DOM confidence=0.74 | nodes=101
+2026-03-27 16:59:41.486 | INFO     |             torvalds | Step 1 | screenshot(profile) → OK: Screenshot saved: 01_profile.png (sha256: d64ddb275193...)
+2026-03-27 16:59:41.486 | DEBUG    |             torvalds | Step 1 detail | action={'action': 'screenshot', 'label': 'profile'} | thinking= | dom_nodes=71 | confidence=0.72
+2026-03-27 16:59:42.127 | DEBUG    |             torvalds | Step 2 | DOM confidence=0.72 | nodes=72
+2026-03-27 16:59:43.764 | INFO     |           gvanrossum | Step 1 | screenshot(profile) → OK: Screenshot saved: 01_profile.png (sha256: e55b5dd061ff...)
+2026-03-27 16:59:43.764 | DEBUG    |           gvanrossum | Step 1 detail | action={'action': 'screenshot', 'label': 'profile'} | thinking= | dom_nodes=72 | confidence=0.68
+2026-03-27 16:59:44.314 | DEBUG    |           gvanrossum | Step 2 | DOM confidence=0.68 | nodes=72
+2026-03-27 16:59:44.560 | INFO     |                  DHH | Step 2 | done() → OK: Action: done
+2026-03-27 16:59:44.561 | DEBUG    |                  DHH | Step 2 detail | action={'action': 'done', 'extracted': {'display_name': 'David Heinemeier Hansson', 'bio': None, 'company': None, 'location': None, 'followers': '24.6k', 'following': '0', 'pinned_repos': ['asset-hosting-with-minimum-ssl', 'conductor', 'textmate-rails-bundle', 'hyprland-wiki']}} | thinking= | dom_nodes=101 | confidence=0.74
+2026-03-27 16:59:44.562 | INFO     |                  DHH | Completed | status=done | steps=2 | fields=7
+2026-03-27 16:59:44.618 | INFO     |                  DHH | Worker finished
+2026-03-27 16:59:44.795 | INFO     |             torvalds | Step 2 | done() → OK: Action: done
+2026-03-27 16:59:44.795 | DEBUG    |             torvalds | Step 2 detail | action={'action': 'done', 'extracted': {'display_name': 'Linus Torvalds', 'bio': None, 'company': None, 'location': None, 'followers': '293k', 'following': '0', 'pinned_repos': ['linux', 'GuitarPedal', 'uemacs', 'AudioNoise', 'HunspellColorize']}} | thinking= | dom_nodes=72 | confidence=0.72
+2026-03-27 16:59:44.796 | INFO     |             torvalds | Completed | status=done | steps=2 | fields=7
+2026-03-27 16:59:44.849 | INFO     |             torvalds | Worker finished
+2026-03-27 16:59:45.818 | INFO     |           gvanrossum | Step 2 | extract(Guido van Rossum gvanrossum) → OK: Extracted 27 chars (via text)
+2026-03-27 16:59:45.818 | DEBUG    |           gvanrossum | Step 2 detail | action={'action': 'extract', 'selector': 'Guido van Rossum gvanrossum'} | thinking= | dom_nodes=72 | confidence=0.68
+2026-03-27 16:59:45.819 | DEBUG    |           gvanrossum | Step 2 extracted | Guido van Rossum
+gvanrossum
+2026-03-27 16:59:46.055 | DEBUG    |           gvanrossum | Step 3 | DOM confidence=0.68 | nodes=72
+2026-03-27 16:59:48.605 | INFO     |           gvanrossum | Step 3 | screenshot(profile) → OK: Screenshot saved: 02_profile.png (sha256: e55b5dd061ff...)
+2026-03-27 16:59:48.606 | DEBUG    |           gvanrossum | Step 3 detail | action={'action': 'screenshot', 'label': 'profile'} | thinking= | dom_nodes=72 | confidence=0.68
+2026-03-27 16:59:49.006 | DEBUG    |           gvanrossum | Step 4 | DOM confidence=0.68 | nodes=72
+2026-03-27 16:59:52.226 | INFO     |           gvanrossum | Step 4 | screenshot(profile) → OK: Screenshot saved: 03_profile.png (sha256: e55b5dd061ff...)
+2026-03-27 16:59:52.227 | DEBUG    |           gvanrossum | Step 4 detail | action={'action': 'screenshot', 'label': 'profile'} | thinking= | dom_nodes=72 | confidence=0.68
+2026-03-27 16:59:52.490 | DEBUG    |           gvanrossum | Step 5 | DOM confidence=0.68 | nodes=72
+2026-03-27 16:59:54.320 | INFO     |           gvanrossum | Step 5 | extract(56) → FAIL: No text found for '56'
+2026-03-27 16:59:54.320 | DEBUG    |           gvanrossum | Step 5 detail | action={'action': 'extract', 'selector': '56'} | thinking= | dom_nodes=72 | confidence=0.68
+2026-03-27 16:59:54.416 | DEBUG    |           gvanrossum | Step 6 | DOM confidence=0.68 | nodes=72
+2026-03-27 16:59:58.252 | INFO     |           gvanrossum | Step 6 | goto(https://github.com/gvanrossum) → OK: Navigated to https://github.com/gvanrossum
+2026-03-27 16:59:58.252 | DEBUG    |           gvanrossum | Step 6 detail | action={'action': 'goto', 'url': 'https://github.com/gvanrossum'} | thinking= | dom_nodes=72 | confidence=0.68
+2026-03-27 16:59:58.448 | DEBUG    |           gvanrossum | Step 7 | DOM confidence=0.68 | nodes=72
+2026-03-27 16:59:59.856 | INFO     |           gvanrossum | Step 7 | extract(Guido van Rossum gvanrossum) → OK: Extracted 27 chars (via text)
+2026-03-27 16:59:59.857 | DEBUG    |           gvanrossum | Step 7 detail | action={'action': 'extract', 'selector': 'Guido van Rossum gvanrossum'} | thinking= | dom_nodes=72 | confidence=0.68
+2026-03-27 16:59:59.857 | DEBUG    |           gvanrossum | Step 7 extracted | Guido van Rossum
+gvanrossum
+2026-03-27 16:59:59.988 | DEBUG    |           gvanrossum | Step 8 | DOM confidence=0.68 | nodes=72
+2026-03-27 17:00:02.392 | INFO     |           gvanrossum | Step 8 | screenshot(profile) → OK: Screenshot saved: 04_profile.png (sha256: e55b5dd061ff...)
+2026-03-27 17:00:02.392 | DEBUG    |           gvanrossum | Step 8 detail | action={'action': 'screenshot', 'label': 'profile'} | thinking= | dom_nodes=72 | confidence=0.68
+2026-03-27 17:00:02.659 | DEBUG    |           gvanrossum | Step 9 | DOM confidence=0.68 | nodes=72
+2026-03-27 17:00:04.595 | INFO     |           gvanrossum | Step 9 | extract(Guido van Rossum gvanrossum) → OK: Extracted 27 chars (via text)
+2026-03-27 17:00:04.595 | DEBUG    |           gvanrossum | Step 9 detail | action={'action': 'extract', 'selector': 'Guido van Rossum gvanrossum'} | thinking= | dom_nodes=72 | confidence=0.68
+2026-03-27 17:00:04.595 | DEBUG    |           gvanrossum | Step 9 extracted | Guido van Rossum
+gvanrossum
+2026-03-27 17:00:04.700 | DEBUG    |           gvanrossum | Step 10 | DOM confidence=0.68 | nodes=72
+2026-03-27 17:00:44.468 | INFO     |               system | Logging initialized → C:\Users\Humblebee\Documents\GitHub\browser_use_agent\playwright_agent\logs\run_2026-03-27_165921
+2026-03-27 17:00:44.474 | INFO     |               system | Batch started | task=github_profile | samples=3 | concurrency=3 | model=claude-sonnet-4-6
+2026-03-27 17:00:46.302 | INFO     |           gvanrossum | Worker started
+2026-03-27 17:00:46.633 | INFO     |           gvanrossum | Agent loop started | url=https://github.com/gvanrossum | max_steps=12
+2026-03-27 17:00:52.814 | DEBUG    |           gvanrossum | Step 1 | DOM confidence=0.68 | nodes=72
+2026-03-27 17:00:55.614 | INFO     |           gvanrossum | Step 1 | screenshot(profile) → OK: Screenshot saved: 01_profile.png (sha256: 27b393117daa...)
+2026-03-27 17:00:55.615 | DEBUG    |           gvanrossum | Step 1 detail | action={'action': 'screenshot', 'label': 'profile'} | thinking= | dom_nodes=72 | confidence=0.68
+2026-03-27 17:00:55.915 | DEBUG    |           gvanrossum | Step 2 | DOM confidence=0.68 | nodes=72
+2026-03-27 17:00:57.366 | INFO     |           gvanrossum | Step 2 | extract(56) → FAIL: No text found for '56'
+2026-03-27 17:00:57.366 | DEBUG    |           gvanrossum | Step 2 detail | action={'action': 'extract', 'selector': '56'} | thinking= | dom_nodes=72 | confidence=0.68
+2026-03-27 17:00:57.466 | DEBUG    |           gvanrossum | Step 3 | DOM confidence=0.68 | nodes=72
+2026-03-27 17:00:59.626 | INFO     |           gvanrossum | Step 3 | extract(Guido van Rossum gvanrossum) → OK: Extracted 27 chars (via text)
+2026-03-27 17:00:59.626 | DEBUG    |           gvanrossum | Step 3 detail | action={'action': 'extract', 'selector': 'Guido van Rossum gvanrossum'} | thinking= | dom_nodes=72 | confidence=0.68
+2026-03-27 17:00:59.626 | DEBUG    |           gvanrossum | Step 3 extracted | Guido van Rossum
+gvanrossum
+2026-03-27 17:00:59.716 | DEBUG    |           gvanrossum | Step 4 | DOM confidence=0.68 | nodes=72
+2026-03-27 17:01:01.954 | INFO     |           gvanrossum | Step 4 | screenshot(profile) → OK: Screenshot saved: 02_profile.png (sha256: 27b393117daa...)
+2026-03-27 17:01:01.955 | DEBUG    |           gvanrossum | Step 4 detail | action={'action': 'screenshot', 'label': 'profile'} | thinking= | dom_nodes=72 | confidence=0.68
+2026-03-27 17:01:02.175 | DEBUG    |           gvanrossum | Step 5 | DOM confidence=0.68 | nodes=72
+2026-03-27 17:01:04.528 | INFO     |           gvanrossum | Step 5 | screenshot(profile) → OK: Screenshot saved: 03_profile.png (sha256: 27b393117daa...)
+2026-03-27 17:01:04.528 | DEBUG    |           gvanrossum | Step 5 detail | action={'action': 'screenshot', 'label': 'profile'} | thinking= | dom_nodes=72 | confidence=0.68
+2026-03-27 17:01:04.699 | DEBUG    |           gvanrossum | Step 6 | DOM confidence=0.68 | nodes=72
+2026-03-27 17:01:06.358 | INFO     |           gvanrossum | Step 6 | extract(Guido van Rossum gvanrossum) → OK: Extracted 27 chars (via text)
+2026-03-27 17:01:06.359 | DEBUG    |           gvanrossum | Step 6 detail | action={'action': 'extract', 'selector': 'Guido van Rossum gvanrossum'} | thinking= | dom_nodes=72 | confidence=0.68
+2026-03-27 17:01:06.359 | DEBUG    |           gvanrossum | Step 6 extracted | Guido van Rossum
+gvanrossum
+2026-03-27 17:01:06.444 | DEBUG    |           gvanrossum | Step 7 | DOM confidence=0.68 | nodes=72
+2026-03-27 17:01:09.726 | INFO     |           gvanrossum | Step 7 | goto(https://github.com/gvanrossum) → OK: Navigated to https://github.com/gvanrossum
+2026-03-27 17:01:09.726 | DEBUG    |           gvanrossum | Step 7 detail | action={'action': 'goto', 'url': 'https://github.com/gvanrossum'} | thinking= | dom_nodes=72 | confidence=0.68
+2026-03-27 17:01:09.876 | DEBUG    |           gvanrossum | Step 8 | DOM confidence=0.68 | nodes=72
+2026-03-27 17:01:11.528 | INFO     |           gvanrossum | Step 8 | screenshot(profile) → OK: Screenshot saved: 04_profile.png (sha256: 27b393117daa...)
+2026-03-27 17:01:11.529 | DEBUG    |           gvanrossum | Step 8 detail | action={'action': 'screenshot', 'label': 'profile'} | thinking= | dom_nodes=72 | confidence=0.68
+2026-03-27 17:01:11.695 | DEBUG    |           gvanrossum | Step 9 | DOM confidence=0.68 | nodes=72
+2026-03-27 17:01:13.598 | INFO     |           gvanrossum | Step 9 | extract(56) → FAIL: No text found for '56'
+2026-03-27 17:01:13.598 | DEBUG    |           gvanrossum | Step 9 detail | action={'action': 'extract', 'selector': '56'} | thinking= | dom_nodes=72 | confidence=0.68
+2026-03-27 17:01:13.710 | DEBUG    |           gvanrossum | Step 10 | DOM confidence=0.68 | nodes=72
+2026-03-27 17:01:15.733 | INFO     |           gvanrossum | Step 10 | done() → OK: Action: done
+2026-03-27 17:01:15.733 | DEBUG    |           gvanrossum | Step 10 detail | action={'action': 'done', 'extracted': {'display_name': 'Guido van Rossum', 'bio': None, 'company': None, 'location': None, 'followers': '25.9k', 'following': '5', 'pinned_repos': ['microsoft/typeagent-py']}} | thinking= | dom_nodes=72 | confidence=0.68
+2026-03-27 17:01:15.734 | INFO     |           gvanrossum | Completed | status=done | steps=10 | fields=7
+2026-03-27 17:01:15.759 | INFO     |           gvanrossum | Worker finished
+2026-03-27 17:01:15.981 | INFO     |               system | Batch complete | samples=1 | duration=31.5s | csv=evidence\run_2026-03-27_165921\combined.csv

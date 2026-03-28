@@ -1,0 +1,51 @@
+{
+  "sample_id": "commit_002",
+  "status": "done",
+  "steps": 4,
+  "extracted": {
+    "commit_sha": "3f19f148dca9b1f01bb78c3f4fd5ba2fa65b1dbc",
+    "pr_number": "305817",
+    "pr_creator": "justschen",
+    "approvers": [
+      "rzhao271",
+      "zhichli"
+    ],
+    "merger": "justschen",
+    "checks_passed": 17,
+    "checks_failed": 1,
+    "merged_with_failures": true,
+    "ci_failure_details": "17/18 checks OK at the time of merge (1 check failed)",
+    "jira_url": null
+  },
+  "artifacts": [
+    {
+      "filename": "01_commit_page.png",
+      "sha256": "6e432cd06b104ba080be030530b50406e4b0618597a4d9215a34619b98c91ee9",
+      "source_url": "https://github.com/microsoft/vscode/commit/3f19f148dca9b1f01bb78c3f4fd5ba2fa65b1dbc",
+      "timestamp": "2026-03-28T00:17:41.900947Z"
+    },
+    {
+      "filename": "02_pr_page.png",
+      "sha256": "24be361a4c1d545409f55c93a5841f7f26724fe56f3435c9c72bcf9a78a4c99a",
+      "source_url": "https://github.com/microsoft/vscode/pull/305817",
+      "timestamp": "2026-03-28T00:17:47.265507Z"
+    }
+  ],
+  "judgment": {
+    "answer": "yes",
+    "confidence": 0.85,
+    "reasoning": "The PR #305817 was created by justschen and received two approvals from rzhao271 and zhichli. The final commit (310c09a) showed 18/18 checks OK, though the linked commit 3f19f148 shows 17/18 checks. The PR went through Copilot code review as well as two human approvals before being merged by justschen. The overall review process appears proper despite one intermittently failing check.",
+    "evidence_refs": [
+      "link[37]: rzhao271 approved these changes",
+      "link[38]: zhichli approved these changes",
+      "img[2]: 17/18 checks OK",
+      "img[30]: 18/18 checks OK",
+      "link[93]: justschen merged"
+    ]
+  },
+  "flagged": false,
+  "notes": [],
+  "errors": [],
+  "started_at": "2026-03-28T00:17:16.010604Z",
+  "finished_at": "2026-03-28T00:17:53.937076Z"
+}

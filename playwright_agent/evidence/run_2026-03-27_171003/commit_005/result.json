@@ -1,0 +1,46 @@
+{
+  "sample_id": "commit_005",
+  "status": "done",
+  "steps": 3,
+  "extracted": {
+    "commit_sha": "404856f2bf3b1ff37b89684924a68498fd68fa69",
+    "pr_number": null,
+    "pr_creator": null,
+    "approvers": null,
+    "merger": null,
+    "checks_passed": null,
+    "checks_failed": null,
+    "merged_with_failures": null,
+    "ci_failure_details": null,
+    "jira_url": null
+  },
+  "artifacts": [
+    {
+      "filename": "01_commit_page.png",
+      "sha256": "8943808f3138be49d358ffa0ca49e42c6807e9846a640ef494ebf28bf2ffe8dd",
+      "source_url": "https://github.com/microsoft/vscode/commit/404856f2bf3b1ff37b89684924a68498fd68fa69",
+      "timestamp": "2026-03-28T00:11:33.455328Z"
+    },
+    {
+      "filename": "02_commit_page.png",
+      "sha256": "8943808f3138be49d358ffa0ca49e42c6807e9846a640ef494ebf28bf2ffe8dd",
+      "source_url": "https://github.com/microsoft/vscode/commit/404856f2bf3b1ff37b89684924a68498fd68fa69",
+      "timestamp": "2026-03-28T00:11:46.842353Z"
+    }
+  ],
+  "judgment": {
+    "answer": "inconclusive",
+    "confidence": 0.1,
+    "reasoning": "The commit page at https://github.com/microsoft/vscode/commit/404856f2bf3b1ff37b89684924a68498fd68fa69 returns a 404 error, meaning the commit either does not exist, has been deleted, or requires authentication to view. No PR, approval, merger, or CI check data could be extracted. The commit SHA is known only from the URL.",
+    "evidence_refs": [
+      "URL returned HTTP 404",
+      "Page title: 'Page not found \u00b7 GitHub'",
+      "No commit metadata, PR links, or check results visible in page state"
+    ]
+  },
+  "flagged": false,
+  "notes": [],
+  "errors": [],
+  "started_at": "2026-03-28T00:11:14.496454Z",
+  "finished_at": "2026-03-28T00:12:02.207738Z"
+}

@@ -1,0 +1,15 @@
+{
+  "sample_id": "commit_004",
+  "status": "failed",
+  "steps": 0,
+  "extracted": {},
+  "artifacts": [],
+  "judgment": null,
+  "flagged": true,
+  "notes": [],
+  "errors": [
+    "Initial navigation failed: Navigation error: Page.goto: net::ERR_NAME_NOT_RESOLVED at https://github.com/microsoft/vscode/commit/b8b841a44fe3a1a496cdc113093afa83811dbab3\nCall log:\n  - navigating to \"https://github.com/microsoft/vscode/commit/b8b"
+  ],
+  "started_at": "2026-03-28T00:16:15.910755Z",
+  "finished_at": "2026-03-28T00:16:24.430208Z"
+}

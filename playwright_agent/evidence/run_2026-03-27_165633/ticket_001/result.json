@@ -1,0 +1,26 @@
+{
+  "sample_id": "ticket_001",
+  "status": "done",
+  "steps": 2,
+  "extracted": {
+    "ticket_number": "305609",
+    "title": "\u30b3\u30de\u30f3\u30c9\u30e9\u30a4\u30f3\u306e\u30c1\u30e3\u30c3\u30c8\u306e\u51fa\u529b\u304c\u898b\u3048\u306a\u304f\u306a\u308b\u3002",
+    "assignee": null,
+    "status": "open",
+    "due_date": null
+  },
+  "artifacts": [
+    {
+      "filename": "01_ticket.png",
+      "sha256": "29cf8000a6686320211f7c94ae741cf9e02130e209f2f4ebf6119def51705145",
+      "source_url": "https://github.com/microsoft/vscode/issues/305609",
+      "timestamp": "2026-03-27T23:56:50.928633Z"
+    }
+  ],
+  "judgment": null,
+  "flagged": false,
+  "notes": [],
+  "errors": [],
+  "started_at": "2026-03-27T23:56:35.323079Z",
+  "finished_at": "2026-03-27T23:56:53.192802Z"
+}

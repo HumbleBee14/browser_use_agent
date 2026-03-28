@@ -1,0 +1,38 @@
+{
+  "sample_id": "commit_004",
+  "status": "done",
+  "steps": 2,
+  "extracted": {
+    "commit_sha": "bfd8d7407c4be82f39764a9f7e63f9a4a14a0bd2",
+    "pr_number": null,
+    "pr_creator": null,
+    "approvers": null,
+    "merger": null,
+    "checks_passed": null,
+    "checks_failed": null,
+    "merged_with_failures": null,
+    "ci_failure_details": null,
+    "jira_url": null
+  },
+  "artifacts": [
+    {
+      "filename": "01_commit_page.png",
+      "sha256": "8943808f3138be49d358ffa0ca49e42c6807e9846a640ef494ebf28bf2ffe8dd",
+      "source_url": "https://github.com/microsoft/vscode/commit/bfd8d7407c4be82f39764a9f7e63f9a4a14a0bd2",
+      "timestamp": "2026-03-28T00:11:26.727685Z"
+    }
+  ],
+  "judgment": {
+    "answer": "inconclusive",
+    "confidence": 0.1,
+    "reasoning": "The commit page returned a 404 error, meaning the commit could not be found on GitHub. This may indicate the commit was deleted, the repository was restructured, or the SHA is incorrect. No PR, review, or CI data is available.",
+    "evidence_refs": [
+      "404 page at https://github.com/microsoft/vscode/commit/bfd8d7407c4be82f39764a9f7e63f9a4a14a0bd2"
+    ]
+  },
+  "flagged": false,
+  "notes": [],
+  "errors": [],
+  "started_at": "2026-03-28T00:11:06.280087Z",
+  "finished_at": "2026-03-28T00:11:40.699428Z"
+}

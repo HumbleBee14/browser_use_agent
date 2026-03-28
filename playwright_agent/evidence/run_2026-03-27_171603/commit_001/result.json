@@ -1,0 +1,15 @@
+{
+  "sample_id": "commit_001",
+  "status": "failed",
+  "steps": 0,
+  "extracted": {},
+  "artifacts": [],
+  "judgment": null,
+  "flagged": true,
+  "notes": [],
+  "errors": [
+    "Initial navigation failed: Navigation error: Page.goto: net::ERR_NAME_NOT_RESOLVED at https://github.com/microsoft/vscode/commit/2de60eada57a6ea88a11ff72091e26b2825e84af\nCall log:\n  - navigating to \"https://github.com/microsoft/vscode/commit/2de"
+  ],
+  "started_at": "2026-03-28T00:16:04.336619Z",
+  "finished_at": "2026-03-28T00:16:15.822134Z"
+}

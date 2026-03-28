@@ -1,0 +1,111 @@
+2026-03-27 17:17:14.539 | INFO     |               system | Logging initialized → C:\Users\Humblebee\Documents\GitHub\browser_use_agent\playwright_agent\logs\run_2026-03-27_171714
+2026-03-27 17:17:14.547 | INFO     |               system | Batch started | task=github_commit_audit | samples=6 | concurrency=3 | model=claude-sonnet-4-6
+2026-03-27 17:17:15.977 | INFO     |           commit_001 | Worker started
+2026-03-27 17:17:16.009 | INFO     |           commit_002 | Worker started
+2026-03-27 17:17:16.044 | INFO     |           commit_003 | Worker started
+2026-03-27 17:17:16.600 | INFO     |           commit_001 | Agent loop started | url=https://github.com/microsoft/vscode/commit/2de60eada57a6ea88a11ff72091e26b2825e84af | max_steps=15
+2026-03-27 17:17:17.301 | INFO     |           commit_002 | Agent loop started | url=https://github.com/microsoft/vscode/commit/3f19f148dca9b1f01bb78c3f4fd5ba2fa65b1dbc | max_steps=15
+2026-03-27 17:17:17.302 | INFO     |           commit_003 | Agent loop started | url=https://github.com/microsoft/vscode/commit/5be9778feb0684fbd84935507ea63c49ed0b0f5c | max_steps=15
+2026-03-27 17:17:33.672 | DEBUG    |           commit_001 | Step 1 | DOM confidence=0.55 | nodes=65
+2026-03-27 17:17:33.672 | DEBUG    |           commit_001 | Step 1 | Vision activated (confidence=0.55)
+2026-03-27 17:17:39.459 | DEBUG    |           commit_002 | Step 1 | DOM confidence=0.61 | nodes=103
+2026-03-27 17:17:40.917 | DEBUG    |           commit_003 | Step 1 | DOM confidence=0.65 | nodes=120
+2026-03-27 17:17:41.901 | INFO     |           commit_002 | Step 1 | screenshot(commit_page) → OK: Screenshot saved: 01_commit_page.png (sha256: 6e432cd06b10...)
+2026-03-27 17:17:41.901 | DEBUG    |           commit_002 | Step 1 detail | action={'action': 'screenshot', 'label': 'commit_page'} | thinking= | dom_nodes=103 | confidence=0.61
+2026-03-27 17:17:42.217 | DEBUG    |           commit_002 | Step 2 | DOM confidence=0.61 | nodes=103
+2026-03-27 17:17:43.877 | INFO     |           commit_003 | Step 1 | screenshot(commit_page) → OK: Screenshot saved: 01_commit_page.png (sha256: 7850d20d9a5c...)
+2026-03-27 17:17:43.878 | DEBUG    |           commit_003 | Step 1 detail | action={'action': 'screenshot', 'label': 'commit_page'} | thinking= | dom_nodes=120 | confidence=0.65
+2026-03-27 17:17:44.529 | INFO     |           commit_002 | Step 2 | click(#305817) → OK: Clicked '#305817' (via text)
+2026-03-27 17:17:44.530 | DEBUG    |           commit_002 | Step 2 detail | action={'action': 'click', 'selector': '#305817'} | thinking= | dom_nodes=103 | confidence=0.61
+2026-03-27 17:17:44.532 | DEBUG    |           commit_003 | Step 2 | DOM confidence=0.65 | nodes=120
+2026-03-27 17:17:44.666 | DEBUG    |           commit_002 | Step 3 | DOM confidence=0.61 | nodes=103
+2026-03-27 17:17:46.834 | INFO     |           commit_003 | Step 2 | click(#305859) → OK: Clicked '#305859' (via text)
+2026-03-27 17:17:46.835 | DEBUG    |           commit_003 | Step 2 detail | action={'action': 'click', 'selector': '#305859'} | thinking= | dom_nodes=120 | confidence=0.65
+2026-03-27 17:17:47.265 | INFO     |           commit_002 | Step 3 | screenshot(pr_page) → OK: Screenshot saved: 02_pr_page.png (sha256: 24be361a4c1d...)
+2026-03-27 17:17:47.265 | DEBUG    |           commit_002 | Step 3 detail | action={'action': 'screenshot', 'label': 'pr_page'} | thinking= | dom_nodes=103 | confidence=0.61
+2026-03-27 17:17:47.440 | DEBUG    |           commit_002 | Step 4 | DOM confidence=0.71 | nodes=120
+2026-03-27 17:17:47.450 | DEBUG    |           commit_003 | Step 3 | DOM confidence=0.65 | nodes=120
+2026-03-27 17:17:49.759 | INFO     |           commit_001 | Step 1 | screenshot(commit_page) → OK: Screenshot saved: 01_commit_page.png (sha256: 9321e6a0e80a...)
+2026-03-27 17:17:49.759 | DEBUG    |           commit_001 | Step 1 detail | action={'action': 'screenshot', 'label': 'commit_page'} | thinking= | dom_nodes=65 | confidence=0.55
+2026-03-27 17:17:49.768 | INFO     |           commit_003 | Step 3 | screenshot(pr_page) → OK: Screenshot saved: 02_pr_page.png (sha256: afc50af75e1f...)
+2026-03-27 17:17:49.769 | DEBUG    |           commit_003 | Step 3 detail | action={'action': 'screenshot', 'label': 'pr_page'} | thinking= | dom_nodes=120 | confidence=0.65
+2026-03-27 17:17:49.962 | DEBUG    |           commit_001 | Step 2 | DOM confidence=0.55 | nodes=65
+2026-03-27 17:17:49.962 | DEBUG    |           commit_001 | Step 2 | Vision activated (confidence=0.55)
+2026-03-27 17:17:50.099 | DEBUG    |           commit_003 | Step 4 | DOM confidence=0.72 | nodes=120
+2026-03-27 17:17:53.936 | INFO     |           commit_002 | Step 4 | done() → OK: Action: done
+2026-03-27 17:17:53.936 | DEBUG    |           commit_002 | Step 4 detail | action={'action': 'done', 'extracted': {'commit_sha': '3f19f148dca9b1f01bb78c3f4fd5ba2fa65b1dbc', 'pr_number': '305817', 'pr_creator': 'justschen', 'approvers': ['rzhao271', 'zhichli'], 'merger': 'justschen', 'checks_passed': 17, 'checks_failed': 1, 'merged_with_failures': True, 'ci_failure_details': '17/18 checks OK at the time of merge (1 check failed)', 'jira_url': None, 'answer': 'yes', 'confidence': 0.85, 'reasoning': 'The PR #305817 was created by justschen and received two approvals from rzhao271 and zhichli. The final commit (310c09a) showed 18/18 checks OK, though the linked commit 3f19f148 shows 17/18 checks. The PR went through Copilot code review as well as two human approvals before being merged by justschen. The overall review process appears proper despite one intermittently failing check.', 'evidence_refs': ['link[37]: rzhao271 approved these changes', 'link[38]: zhichli approved these changes', 'img[2]: 17/18 checks OK', 'img[30]: 18/18 checks OK', 'link[93]: justschen merged']}} | thinking= | dom_nodes=120 | confidence=0.71
+2026-03-27 17:17:53.936 | INFO     |           commit_002 | Completed | status=done | steps=4 | fields=10
+2026-03-27 17:17:53.974 | INFO     |           commit_002 | Worker finished
+2026-03-27 17:17:53.980 | INFO     |           commit_004 | Worker started
+2026-03-27 17:17:54.179 | INFO     |           commit_004 | Agent loop started | url=https://github.com/microsoft/vscode/commit/b8b841a44fe3a1a496cdc113093afa83811dbab3 | max_steps=15
+2026-03-27 17:17:55.943 | INFO     |           commit_003 | Step 4 | done() → OK: Action: done
+2026-03-27 17:17:55.943 | DEBUG    |           commit_003 | Step 4 detail | action={'action': 'done', 'extracted': {'commit_sha': '5be9778feb0684fbd84935507ea63c49ed0b0f5c', 'pr_number': '305859', 'pr_creator': 'roblourens', 'approvers': ['meganrogge', 'zhichli'], 'merger': 'roblourens', 'checks_passed': 18, 'checks_failed': 0, 'merged_with_failures': False, 'ci_failure_details': None, 'jira_url': None, 'answer': 'yes', 'confidence': 0.95, 'reasoning': "The PR #305859 was created by roblourens and received approvals from two reviewers: meganrogge and zhichli (both 'approved these changes'). The final commit (f53f700) shows '18 / 18 checks OK', indicating all CI checks passed before merge. The PR was merged by roblourens.", 'evidence_refs': ["link[36]: 'meganrogge approved these changes'", "link[37]: 'zhichli approved these changes'", "img[25]: '18 / 18 checks OK' for commit f53f700", 'link[46]: PR creator roblourens', 'link[94]: merger roblourens']}} | thinking= | dom_nodes=120 | confidence=0.72
+2026-03-27 17:17:55.943 | INFO     |           commit_003 | Completed | status=done | steps=4 | fields=10
+2026-03-27 17:17:56.013 | INFO     |           commit_003 | Worker finished
+2026-03-27 17:17:56.032 | INFO     |           commit_005 | Worker started
+2026-03-27 17:17:56.284 | INFO     |           commit_005 | Agent loop started | url=https://github.com/microsoft/vscode/commit/b98ad1eadb1c4a959643feacdc14b14ce6db41dc | max_steps=15
+2026-03-27 17:18:06.231 | INFO     |           commit_001 | Step 2 | click(#305854) → OK: Clicked '#305854' (via text)
+2026-03-27 17:18:06.231 | DEBUG    |           commit_001 | Step 2 detail | action={'action': 'click', 'selector': '#305854'} | thinking= | dom_nodes=65 | confidence=0.55
+2026-03-27 17:18:06.690 | DEBUG    |           commit_001 | Step 3 | DOM confidence=0.57 | nodes=69
+2026-03-27 17:18:06.690 | DEBUG    |           commit_001 | Step 3 | Vision activated (confidence=0.57)
+2026-03-27 17:18:10.498 | DEBUG    |           commit_005 | Step 1 | DOM confidence=0.54 | nodes=60
+2026-03-27 17:18:10.498 | DEBUG    |           commit_005 | Step 1 | Vision activated (confidence=0.54)
+2026-03-27 17:18:20.507 | DEBUG    |           commit_004 | Step 1 | DOM confidence=0.56 | nodes=80
+2026-03-27 17:18:20.507 | DEBUG    |           commit_004 | Step 1 | Vision activated (confidence=0.56)
+2026-03-27 17:18:21.359 | INFO     |           commit_001 | Step 3 | screenshot(pr_page) → OK: Screenshot saved: 02_pr_page.png (sha256: 3cf7115a960c...)
+2026-03-27 17:18:21.360 | DEBUG    |           commit_001 | Step 3 detail | action={'action': 'screenshot', 'label': 'pr_page'} | thinking= | dom_nodes=69 | confidence=0.57
+2026-03-27 17:18:21.496 | DEBUG    |           commit_001 | Step 4 | DOM confidence=0.71 | nodes=120
+2026-03-27 17:18:25.775 | INFO     |           commit_005 | Step 1 | screenshot(commit_page) → OK: Screenshot saved: 01_commit_page.png (sha256: 14e55069a51e...)
+2026-03-27 17:18:25.775 | DEBUG    |           commit_005 | Step 1 detail | action={'action': 'screenshot', 'label': 'commit_page'} | thinking= | dom_nodes=60 | confidence=0.54
+2026-03-27 17:18:25.913 | DEBUG    |           commit_005 | Step 2 | DOM confidence=0.54 | nodes=60
+2026-03-27 17:18:25.914 | DEBUG    |           commit_005 | Step 2 | Vision activated (confidence=0.54)
+2026-03-27 17:18:27.646 | INFO     |           commit_001 | Step 4 | done() → OK: Action: done
+2026-03-27 17:18:27.646 | DEBUG    |           commit_001 | Step 4 detail | action={'action': 'done', 'extracted': {'commit_sha': '2de60eada57a6ea88a11ff72091e26b2825e84af', 'pr_number': '305854', 'pr_creator': 'kycutler', 'approvers': ['pwang347'], 'merger': 'kycutler', 'checks_passed': 18, 'checks_failed': 0, 'merged_with_failures': False, 'ci_failure_details': None, 'jira_url': None, 'answer': 'yes', 'confidence': 0.9, 'reasoning': "The commit is linked to PR #305854 created by kycutler. The PR was approved by pwang347 ('pwang347 approved these changes'). The final commit (bb8f822) shows 18/18 checks OK, meaning all checks passed before merge. Copilot also reviewed and left comments. The PR went through proper review with at least one human approver and all CI checks passing.", 'evidence_refs': ["link[28]: 'pwang347 approved these changes'", "link[17]: img '18 / 18 checks OK'", "link[38]: 'kycutler' (PR creator)", "link[89]: 'Mar 28, 2026' merge event by kycutler"]}} | thinking= | dom_nodes=120 | confidence=0.71
+2026-03-27 17:18:27.646 | INFO     |           commit_001 | Completed | status=done | steps=4 | fields=10
+2026-03-27 17:18:27.761 | INFO     |           commit_001 | Worker finished
+2026-03-27 17:18:27.769 | INFO     |           commit_006 | Worker started
+2026-03-27 17:18:27.997 | INFO     |           commit_006 | Agent loop started | url=https://github.com/microsoft/vscode/commit/ca0ea977c63e180159c921986731aa3b71683d74 | max_steps=15
+2026-03-27 17:18:34.457 | INFO     |           commit_004 | Step 1 | screenshot(commit_page) → OK: Screenshot saved: 01_commit_page.png (sha256: e95fe8dd976f...)
+2026-03-27 17:18:34.458 | DEBUG    |           commit_004 | Step 1 detail | action={'action': 'screenshot', 'label': 'commit_page'} | thinking= | dom_nodes=80 | confidence=0.56
+2026-03-27 17:18:34.804 | DEBUG    |           commit_004 | Step 2 | DOM confidence=0.56 | nodes=80
+2026-03-27 17:18:34.804 | DEBUG    |           commit_004 | Step 2 | Vision activated (confidence=0.56)
+2026-03-27 17:18:38.590 | DEBUG    |           commit_006 | Step 1 | DOM confidence=0.47 | nodes=47
+2026-03-27 17:18:38.590 | DEBUG    |           commit_006 | Step 1 | Vision activated (confidence=0.47)
+2026-03-27 17:18:38.606 | INFO     |           commit_005 | Step 2 | click(#305796) → OK: Clicked '#305796' (via text)
+2026-03-27 17:18:38.607 | DEBUG    |           commit_005 | Step 2 detail | action={'action': 'click', 'selector': '#305796'} | thinking= | dom_nodes=60 | confidence=0.54
+2026-03-27 17:18:38.760 | DEBUG    |           commit_005 | Step 3 | DOM confidence=0.54 | nodes=60
+2026-03-27 17:18:38.760 | DEBUG    |           commit_005 | Step 3 | Vision activated (confidence=0.54)
+2026-03-27 17:18:47.485 | INFO     |           commit_004 | Step 2 | click(15) → OK: Clicked '15' (via index)
+2026-03-27 17:18:47.485 | DEBUG    |           commit_004 | Step 2 detail | action={'action': 'click', 'selector': '15'} | thinking= | dom_nodes=80 | confidence=0.56
+2026-03-27 17:18:47.617 | DEBUG    |           commit_004 | Step 3 | DOM confidence=0.54 | nodes=78
+2026-03-27 17:18:47.617 | DEBUG    |           commit_004 | Step 3 | Vision activated (confidence=0.54)
+2026-03-27 17:18:52.028 | INFO     |           commit_005 | Step 3 | screenshot(pr_page) → OK: Screenshot saved: 02_pr_page.png (sha256: 0d4131b156b6...)
+2026-03-27 17:18:52.029 | DEBUG    |           commit_005 | Step 3 detail | action={'action': 'screenshot', 'label': 'pr_page'} | thinking= | dom_nodes=60 | confidence=0.54
+2026-03-27 17:18:52.198 | INFO     |           commit_006 | Step 1 | screenshot(commit_page) → OK: Screenshot saved: 01_commit_page.png (sha256: 8d66dbc91f26...)
+2026-03-27 17:18:52.198 | DEBUG    |           commit_006 | Step 1 detail | action={'action': 'screenshot', 'label': 'commit_page'} | thinking= | dom_nodes=47 | confidence=0.47
+2026-03-27 17:18:52.226 | DEBUG    |           commit_005 | Step 4 | DOM confidence=0.70 | nodes=119
+2026-03-27 17:18:52.305 | DEBUG    |           commit_006 | Step 2 | DOM confidence=0.47 | nodes=47
+2026-03-27 17:18:52.305 | DEBUG    |           commit_006 | Step 2 | Vision activated (confidence=0.47)
+2026-03-27 17:18:57.572 | INFO     |           commit_005 | Step 4 | done() → OK: Action: done
+2026-03-27 17:18:57.572 | DEBUG    |           commit_005 | Step 4 detail | action={'action': 'done', 'extracted': {'commit_sha': 'b98ad1eadb1c4a959643feacdc14b14ce6db41dc', 'pr_number': '305796', 'pr_creator': 'pwang347', 'approvers': ['joshspicer'], 'merger': 'pwang347', 'checks_passed': 18, 'checks_failed': 0, 'merged_with_failures': False, 'ci_failure_details': None, 'jira_url': None, 'answer': 'yes', 'confidence': 0.95, 'reasoning': "The commit is associated with PR #305796 created by pwang347. The PR was approved by joshspicer ('joshspicer approved these changes'). All 18/18 checks passed (no failures). The PR was merged by pwang347. Copilot also left review comments. All indicators point to a properly reviewed and checked merge.", 'evidence_refs': ["link[30]: 'joshspicer approved these changes'", "img[2]: '18 / 18 checks OK'", "link[39]: 'pwang347' (PR creator)", "link[80]: 'pwang347' (merger)"]}} | thinking= | dom_nodes=119 | confidence=0.70
+2026-03-27 17:18:57.572 | INFO     |           commit_005 | Completed | status=done | steps=4 | fields=10
+2026-03-27 17:18:57.597 | INFO     |           commit_005 | Worker finished
+2026-03-27 17:18:59.559 | INFO     |           commit_004 | Step 3 | screenshot(pr_page) → OK: Screenshot saved: 02_pr_page.png (sha256: a627a72c6a19...)
+2026-03-27 17:18:59.560 | DEBUG    |           commit_004 | Step 3 detail | action={'action': 'screenshot', 'label': 'pr_page'} | thinking= | dom_nodes=78 | confidence=0.54
+2026-03-27 17:18:59.667 | DEBUG    |           commit_004 | Step 4 | DOM confidence=0.73 | nodes=120
+2026-03-27 17:19:04.500 | INFO     |           commit_004 | Step 4 | done() → OK: Action: done
+2026-03-27 17:19:04.500 | DEBUG    |           commit_004 | Step 4 detail | action={'action': 'done', 'extracted': {'commit_sha': 'b8b841a44fe3a1a496cdc113093afa83811dbab3', 'pr_number': '305847', 'pr_creator': 'lszomoru', 'approvers': ['roblourens'], 'merger': 'lszomoru', 'checks_passed': 18, 'checks_failed': 0, 'merged_with_failures': False, 'ci_failure_details': None, 'jira_url': None, 'answer': 'yes', 'confidence': 0.95, 'reasoning': 'The commit was associated with PR #305847. It had a human approver (roblourens approved the changes), all 18/18 checks passed, and it was merged by lszomoru. This constitutes proper review before merge.', 'evidence_refs': ["element [2]: 'lszomoru merged 1 commit into main'", "element [4]: '18 / 18 checks OK'", "element [24]: 'roblourens approved these changes'"]}} | thinking= | dom_nodes=120 | confidence=0.73
+2026-03-27 17:19:04.501 | INFO     |           commit_004 | Completed | status=done | steps=4 | fields=10
+2026-03-27 17:19:04.525 | INFO     |           commit_004 | Worker finished
+2026-03-27 17:19:07.310 | INFO     |           commit_006 | Step 2 | click(#305844) → OK: Clicked '#305844' (via text)
+2026-03-27 17:19:07.310 | DEBUG    |           commit_006 | Step 2 detail | action={'action': 'click', 'selector': '#305844'} | thinking= | dom_nodes=47 | confidence=0.47
+2026-03-27 17:19:07.373 | DEBUG    |           commit_006 | Step 3 | DOM confidence=0.47 | nodes=47
+2026-03-27 17:19:07.374 | DEBUG    |           commit_006 | Step 3 | Vision activated (confidence=0.47)
+2026-03-27 17:19:20.488 | INFO     |           commit_006 | Step 3 | screenshot(pr_page) → OK: Screenshot saved: 02_pr_page.png (sha256: decc4dfc2cc8...)
+2026-03-27 17:19:20.488 | DEBUG    |           commit_006 | Step 3 detail | action={'action': 'screenshot', 'label': 'pr_page'} | thinking= | dom_nodes=47 | confidence=0.47
+2026-03-27 17:19:20.602 | DEBUG    |           commit_006 | Step 4 | DOM confidence=0.65 | nodes=97
+2026-03-27 17:19:26.251 | INFO     |           commit_006 | Step 4 | done() → OK: Action: done
+2026-03-27 17:19:26.252 | DEBUG    |           commit_006 | Step 4 detail | action={'action': 'done', 'extracted': {'commit_sha': 'ca0ea977c63e180159c921986731aa3b71683d74', 'pr_number': '305844', 'pr_creator': 'lszomoru', 'approvers': ['roblourens'], 'merger': 'lszomoru', 'checks_passed': 18, 'checks_failed': 0, 'merged_with_failures': False, 'ci_failure_details': None, 'jira_url': None, 'answer': 'yes', 'confidence': 0.97, 'reasoning': 'PR #305844 was created by lszomoru and approved by roblourens before merge. All 18/18 checks passed with no failures. The PR was properly reviewed with an approval from a human reviewer (roblourens) who has write access.', 'evidence_refs': ["element [2]: '18 / 18 checks OK'", "element [21]: 'roblourens approved these changes'", "element [30]: PR creator 'lszomoru'", "element [65]: merged at 'March 27, 2026 22:30'"]}} | thinking= | dom_nodes=97 | confidence=0.65
+2026-03-27 17:19:26.252 | INFO     |           commit_006 | Completed | status=done | steps=4 | fields=10
+2026-03-27 17:19:26.277 | INFO     |           commit_006 | Worker finished
+2026-03-27 17:19:26.524 | INFO     |               system | Batch complete | samples=6 | duration=132.0s | csv=C:\Users\Humblebee\Documents\GitHub\browser_use_agent\playwright_agent\evidence\run_2026-03-27_171714\combined.csv

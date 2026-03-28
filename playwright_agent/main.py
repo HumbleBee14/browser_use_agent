@@ -150,6 +150,7 @@ async def run_batch(
                 "done": "[bold green]DONE[/bold green]",
                 "failed": "[bold red]FAILED[/bold red]",
                 "needs_review": "[bold yellow]NEEDS REVIEW[/bold yellow]",
+                "partial_success": "[bold cyan]PARTIAL[/bold cyan]",
             }
             console.print(
                 f"  [{idx}/{len(pending)}] [cyan]{sample.sample_id}[/cyan] "
@@ -182,7 +183,7 @@ async def run_batch(
 
 def _print_summary(evidence_dir: Path, samples: list[SampleInput], duration: float, csv_path: Path):
     """Print batch summary table."""
-    done = failed = review = 0
+    done = failed = review = partial = 0
     for s in samples:
         result_path = evidence_dir / s.sample_id / "result.json"
         if result_path.exists():
@@ -190,6 +191,8 @@ def _print_summary(evidence_dir: Path, samples: list[SampleInput], duration: flo
             status = data.get("status", "failed")
             if status == "done":
                 done += 1
+            elif status == "partial_success":
+                partial += 1
             elif status == "needs_review":
                 review += 1
             else:
@@ -203,6 +206,7 @@ def _print_summary(evidence_dir: Path, samples: list[SampleInput], duration: flo
     table.add_column("Value")
     table.add_row("Total Samples", str(len(samples)))
     table.add_row("Done", str(done))
+    table.add_row("Partial Success", str(partial))
     table.add_row("Failed", str(failed))
     table.add_row("Needs Review", str(review))
     table.add_row("Duration", f"{duration:.1f}s")
@@ -229,10 +233,30 @@ async def run(args: argparse.Namespace) -> None:
 
     # Load task spec from file OR generate from natural language prompt
     if args.prompt:
-        from task_planner import plan
+        from task_planner import plan_chunked
         console.print(f"\n[bold]Planning from prompt:[/bold] {args.prompt}")
         console.print("[dim]Calling Claude to generate task spec + samples...[/dim]")
-        task_spec, planned_samples = await plan(args.prompt)
+        task_spec, discovery_spec, planned_samples = await plan_chunked(args.prompt)
+
+        # If planner flagged discovery needed, run it to collect URLs
+        if discovery_spec:
+            console.print(f"\n[yellow]Large-scale task detected — running discovery first...[/yellow]")
+            discovery_url = getattr(task_spec, "_discovery_url", "")
+            console.print(f"  Discovery URL: {discovery_url}")
+            samples_csv = evidence_dir / "discovered_samples.csv"
+            disc_samples = await discover(
+                discovery_spec, discovery_url, samples_csv,
+                headless=args.headless if args.headless is not None else config.HEADLESS,
+            )
+            if disc_samples:
+                planned_samples = disc_samples
+                console.print(f"  [green]Discovered {len(disc_samples)} samples[/green]")
+            else:
+                console.print("[bold red]Discovery returned 0 samples — aborting.[/bold red]")
+                console.print("[dim]The discovery agent could not find individual URLs on the listing page.[/dim]")
+                console.print("[dim]Try providing explicit URLs via --input CSV instead.[/dim]")
+                logger.error("Discovery returned 0 samples, aborting to prevent misleading single-page run")
+                return
 
         # Log what the planner generated — visible in console + log file
         console.print(f"\n[green]Generated Task Spec:[/green]")

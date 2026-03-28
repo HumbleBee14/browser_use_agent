@@ -242,6 +242,156 @@ RATE_LIMITS = {
 
 Concurrency-safe — all workers share one event loop, one lock.
 
+## Long-Horizon Task Support
+
+Standard tasks (profile extraction, single-page audit) complete in 2-10 steps. Long-horizon tasks (multi-page audits, cross-link navigation chains) need 30-50+ steps. Four mechanisms make this work:
+
+### 1. `save_progress` Action
+
+A 10th agent action. Checkpoints partial data **without stopping** the loop:
+
+```
+Step 8:  save_progress({ "prs": [{ "title": "Fix editor...", "author": "alice" }] })
+         → checkpoint.json updated, agent continues
+Step 16: save_progress({ "prs": [{ "title": "Refactor sync...", "author": "bob" }] })
+         → data merged with previous checkpoint, agent continues
+Step 22: done({ "total_prs_audited": 2, "all_checks_passed": true })
+         → accumulated + final data merged → result.json
+```
+
+Data is **deep-merged** across calls — arrays append, dicts recurse. If the agent crashes at step 20, `checkpoint.json` has all data from steps 8 and 16.
+
+### 2. Live `checkpoint.json`
+
+Written to the sample's evidence folder every 5 steps and on every `save_progress` call. You can watch it update in real-time:
+
+```json
+{
+  "sample_id": "pr_chain_audit",
+  "status": "in_progress",
+  "step": 16,
+  "accumulated_data": {
+    "prs": [
+      { "title": "Fix editor crash", "author": "alice", "reviewers": ["bob"] },
+      { "title": "Refactor sync module", "author": "bob", "reviewers": ["alice", "carol"] }
+    ]
+  },
+  "progress_notes": ["Completed PR #1 of 5", "Completed PR #2 of 5"],
+  "artifacts_so_far": [{"filename": "01_pr_overview.png", "sha256": "..."}],
+  "steps_logged": 16,
+  "updated_at": "2026-03-27T18:30:00Z"
+}
+```
+
+Monitor it live: `watch -n 1 cat evidence/run_XXXX/sample_id/checkpoint.json`
+
+### 3. LLM-Powered Step Summary
+
+Every 10 steps, Claude (fast model — Haiku) summarizes the old history into 2-3 sentences:
+
+```
+Steps 1-10: Navigated to the merged PR list, clicked into PR #305569 by benibenj.
+Extracted title, author, and reviewer (justschen). Took screenshot of PR overview.
+Saved progress with PR #1 data and navigated back to the list.
+```
+
+The agent always sees in its prompt:
+- **Last 5 raw actions** (recent context)
+- **LLM-generated summaries** of earlier work (long-term memory, not raw steps)
+- **Full accumulated data** from save_progress (what was collected)
+- **Step budget** ("Step 16 of 40 — 24 remaining")
+- **Extracted text buffer** — all `extract` action results are also accumulated
+
+Uses the fast/cheap model so summary calls cost < $0.001 each.
+
+### 4. Auto-Pagination
+
+When the agent clicks a "Next", "Load more", "Page 2", etc., the system detects it and grants **+3 bonus steps** to the step budget. This means pagination doesn't eat into the task's working budget:
+
+```
+Step 15 | click("Next page") → OK → Pagination detected → +3 bonus (effective_max=43)
+Step 25 | click("Load more")  → OK → Pagination detected → +3 bonus (effective_max=46)
+```
+
+Detection is keyword-based: `next`, `next page`, `load more`, `show more`, `older`, `newer`, `»`, `›`, etc.
+
+### 5. Watchdog (Stall Detection)
+
+If the agent hasn't produced new data (no `save_progress`, `extract`, or `screenshot`) for 5 consecutive steps, the watchdog injects a warning:
+
+```
+WARNING: You have not produced new data in 5 steps. You have 12 steps left.
+Either extract/save_progress with data, or call done with what you have,
+or call fail if the task cannot be completed.
+```
+
+This prevents the agent from burning steps on aimless navigation. If accumulated data exists, a checkpoint is also written so nothing is lost if the agent stalls out.
+
+### 6. Batch Chunking (Large-Scale Tasks)
+
+For tasks involving 10+ items with individual URLs (e.g., "extract all 200 org members"), the planner can flag `needs_discovery: true`. The orchestrator then:
+
+1. Runs a **discovery phase** — one agent paginates the listing page, collects all URLs
+2. Each discovered URL becomes a **separate parallel sample**
+3. Samples are distributed across N concurrent workers
+
+This means a "200 org members" task becomes 200 parallel workers (bounded by concurrency limit), each doing a simple 3-5 step extraction — much faster and more reliable than one agent doing 500+ steps.
+
+### 7. Smart Termination
+
+The agent doesn't just stop at `max_steps`. Multiple termination conditions are checked **before every step**:
+
+| Trigger | Status | Logic |
+|---------|--------|-------|
+| Agent calls `done` + all requirements met | `done` | Machine-verified fields + artifacts |
+| Agent calls `done` + array count < `expected_items` | `partial_success` | Got some but not all items |
+| Wall-clock timeout (`max_time_seconds`) | `partial_success` or `failed` | Real time limit for long-running tasks |
+| Network circuit breaker (5 consecutive infra errors) | `partial_success` or `failed` | Site down, DNS failure, browser crash |
+| Watchdog stall (5 steps, no new data) | warning injected | Agent gets hard nudge to produce data or stop |
+| `max_steps` exhausted | `failed` | Hard ceiling (accumulated data saved) |
+| LLM API error | `failed` | Claude unreachable |
+| Agent calls `fail(reason)` | `failed` | Agent gives up intentionally |
+
+**Infrastructure error detection** classifies errors as infra (timeout, DNS, connection refused, page crashed, SSL) vs logic (element not found, click failed). Only infra errors count toward the circuit breaker — a click failing because the wrong selector was used does NOT trigger early termination.
+
+**`partial_success` status** — when the agent collected some data but couldn't finish (e.g., 4 of 5 PRs audited, then the 5th page 404'd), the result is `partial_success` not `failed`. The accumulated data is preserved in `result.json`.
+
+**`expected_items`** — task specs can set `expected_items: 5`. When `save_progress` is called 5 times, the agent gets a nudge: "All items collected. Call done now." The final `done` validation also checks array lengths against this count.
+
+New task spec fields:
+
+```json
+{
+  "max_steps": 50,
+  "max_time_seconds": 300,
+  "expected_items": 5,
+  "max_consecutive_network_errors": 5
+}
+```
+
+### 8. Crash Recovery
+
+If the agent hits any termination condition, accumulated data is **not lost**:
+- `checkpoint.json` has the latest checkpoint (written on every termination)
+- `result.json` includes accumulated data (with appropriate status)
+- `action_log.json` has the full step trace up to the termination point
+
+### Test Cases
+
+**PR Audit Chain** — the showcase for long-horizon:
+```bash
+python main.py --task tasks/github_pr_audit_chain.json \
+  --input tasks/inputs/github_pr_chain.csv --no-headless
+```
+Agent navigates merged PR list → clicks into each PR → extracts fields → screenshots → checkpoints → navigates back → repeats for 3-5 PRs. ~30-50 steps.
+
+**Contributor Deep Audit** — cross-page navigation:
+```bash
+python main.py --task tasks/github_contributor_deep_audit.json \
+  --input tasks/inputs/github_contributors.csv --no-headless
+```
+Agent visits contributors page → clicks each profile → extracts details → screenshots → checkpoints → navigates back → repeats for top 3. ~30-40 steps.
+
 ## What Makes It System-Agnostic
 
 Zero site-specific code in any Python file. The agent reads the live DOM and reasons about it. All site knowledge lives in:

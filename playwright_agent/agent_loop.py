@@ -11,20 +11,37 @@ Key invariants:
 - done/fail terminate the loop — max_steps is the hard ceiling
 - Loop detection: same (url, action) 3+ times → inject recovery nudge
 - Consecutive failures: 3+ → inject visible element list
+
+Long-horizon support:
+- save_progress action: checkpoint partial data without stopping
+- Accumulated extraction buffer: merged across save_progress calls
+- Step summary: every 10 steps, condense history into a summary
+- Live checkpoint.json: updated on every save_progress + every 5 steps
+- Progress-aware prompt: shows collected data, pages visited, step budget
 """
 
 from __future__ import annotations
 
 import json
+import time
 from datetime import datetime
 
 from anthropic import AsyncAnthropic
 from playwright.async_api import Page
 
 import config
+from memory import MemoryStore
 
-# Module-level client — reused across all samples for connection pooling
+# Module-level singletons — reused across all samples for connection pooling
 _client: AsyncAnthropic | None = None
+_memory: MemoryStore | None = None
+
+
+def _get_memory() -> MemoryStore:
+    global _memory
+    if _memory is None:
+        _memory = MemoryStore()
+    return _memory
 
 
 def _get_client() -> AsyncAnthropic:
@@ -60,11 +77,34 @@ async def run(
     log.info(f"Agent loop started | url={sample.url} | max_steps={task_spec.max_steps}")
 
     client = _get_client()
+    memory = _get_memory()
     tools = action_tool_schema()
     history: list[dict] = []
+    progress: dict = {"pages_visited": [], "fields_found": [], "artifacts": []}
     loop_counter: dict[tuple, int] = {}  # (url, action_name) → count
     consecutive_failures = 0
     step = 0
+
+    # Long-term memory: retrieve navigation hints for this domain
+    memory_hints = memory.get_hints(sample.url) if sample.url else None
+    if memory_hints:
+        log.info(f"Memory loaded | domain hints available ({len(memory_hints)} chars)")
+
+    # Long-horizon state
+    accumulated: dict = {}           # merged data from save_progress calls
+    progress_notes: list[str] = []   # human-readable notes from save_progress
+    step_summaries: list[str] = []   # condensed summaries every SUMMARY_INTERVAL steps
+    SUMMARY_INTERVAL = 10
+    CHECKPOINT_INTERVAL = 5
+    WATCHDOG_STALL_LIMIT = 5         # steps without new data → force intervention
+    last_data_step = 0               # last step that produced new data
+    pagination_bonus = 0             # extra steps granted for pagination
+
+    # Smart termination state
+    start_time = time.monotonic()
+    network_errors = 0               # consecutive infra-level failures (timeout, DNS, etc.)
+    items_collected = 0              # count of save_progress calls (proxy for items done)
+    seen_screenshot_hashes: set[str] = set()  # detect duplicate screenshots
 
     # Navigate to starting URL if provided — fail fast if unreachable
     if sample.url:
@@ -80,7 +120,37 @@ async def run(
             )
             return
 
-    for step in range(1, task_spec.max_steps + 1):
+    effective_max = task_spec.max_steps
+    for step in range(1, task_spec.max_steps + 200):  # hard ceiling with pagination bonus
+        if step > effective_max:
+            break
+
+        # ---- 0. SMART TERMINATION CHECKS (before each step) ----
+        elapsed = time.monotonic() - start_time
+        termination = _check_termination(
+            step=step,
+            elapsed=elapsed,
+            task_spec=task_spec,
+            accumulated=accumulated,
+            items_collected=items_collected,
+            network_errors=network_errors,
+            effective_max=effective_max,
+            log=log,
+        )
+        if termination:
+            status, reason = termination
+            log.warning(f"Smart termination | status={status} | {reason}")
+            if accumulated:
+                output_mgr.write_checkpoint(step, accumulated, progress_notes, status=status)
+            output_mgr.write_result(
+                status=status,
+                extracted=accumulated or {},
+                errors=[reason],
+                notes=progress_notes,
+                steps=step,
+            )
+            return
+
         # ---- 1. OBSERVE ----
         snap = await dom_extractor.snapshot(page, task_spec.keywords)
         page_state = dom_extractor.serialize(snap)
@@ -108,6 +178,11 @@ async def run(
             snap=snap,
             consecutive_failures=consecutive_failures,
             loop_counter=loop_counter,
+            progress=progress,
+            accumulated=accumulated,
+            step_summaries=step_summaries,
+            current_step=step,
+            memory_hints=memory_hints,
         )
 
         # Log everything going into the LLM call — full context for debugging
@@ -184,7 +259,7 @@ async def run(
                 break
 
         # ---- 4. ACT ----
-        action_result = await _dispatch(action, page, snap, output_mgr)
+        action_result = await _dispatch(action, page, snap, output_mgr, seen_screenshot_hashes)
 
         result_desc = (action_result.description if action_result.success else action_result.error) or ""
 
@@ -201,6 +276,92 @@ async def run(
         )
         if action_result.extracted_text:
             log.debug(f"Step {step} extracted | {action_result.extracted_text[:300]}")
+
+        # Update persistent progress (survives history trimming)
+        if action.action == "goto" and action_result.success:
+            url_short = (action.url or page.url)[:80]
+            if url_short not in progress["pages_visited"]:
+                progress["pages_visited"].append(url_short)
+        if action.action == "screenshot" and action_result.success:
+            progress["artifacts"].append(action.label or "screenshot")
+        if action_result.extracted_text:
+            progress["fields_found"].append(action_result.extracted_text[:50])
+
+        # ---- NETWORK ERROR TRACKING ----
+        if not action_result.success and _is_infra_error(action_result.error or ""):
+            network_errors += 1
+            log.warning(f"Step {step} | Network error #{network_errors}: {action_result.error[:100]}")
+        elif action_result.success:
+            network_errors = 0  # reset on any successful action
+
+        data_changed = False  # tracks whether save_progress added genuinely new data
+
+        # ---- SAVE_PROGRESS: checkpoint partial data without stopping ----
+        if action.action == "save_progress":
+            partial = action.extracted or {}
+            snapshot_before = json.dumps(accumulated, sort_keys=True, default=str)
+            _deep_merge(accumulated, partial)
+            snapshot_after = json.dumps(accumulated, sort_keys=True, default=str)
+            data_changed = snapshot_before != snapshot_after
+            note = action.note or f"Checkpoint at step {step}"
+            progress_notes.append(note)
+            if data_changed:
+                items_collected += 1
+            log.info(f"Step {step} | save_progress #{items_collected} | new_data={data_changed} | {note} | keys={list(partial.keys())}")
+            output_mgr.write_checkpoint(step, accumulated, progress_notes)
+
+            # Check if we've collected the expected number of items
+            if task_spec.expected_items > 0 and items_collected >= task_spec.expected_items:
+                log.info(f"Step {step} | Expected items reached ({items_collected}/{task_spec.expected_items})")
+                history.append({
+                    "step": step,
+                    "action": "system_notice",
+                    "result": (
+                        f"You have collected {items_collected} of {task_spec.expected_items} expected items. "
+                        f"All items collected. Call done now with the complete data."
+                    ),
+                })
+            elif not data_changed:
+                history.append({
+                    "step": step,
+                    "action": "system_notice",
+                    "result": (
+                        f"No new data added (duplicate of previously saved data). "
+                        f"Stop calling save_progress and take a real action: "
+                        f"use goto to navigate, click to interact, or call done if finished."
+                    ),
+                })
+            else:
+                remaining_items = ""
+                if task_spec.expected_items > 0:
+                    remaining_items = f" ({items_collected}/{task_spec.expected_items} items)"
+                history.append({
+                    "step": step,
+                    "action": "system_notice",
+                    "result": f"Progress saved{remaining_items}. You have {effective_max - step} steps remaining. Keep going.",
+                })
+            consecutive_failures = 0
+            continue
+
+        # ---- EXTRACT → ACCUMULATED BUFFER: extract action feeds long-term memory ----
+        if action.action == "extract" and action_result.success and action_result.extracted_text:
+            if "extracted_texts" not in accumulated:
+                accumulated["extracted_texts"] = []
+            accumulated["extracted_texts"].append({
+                "step": step,
+                "selector": action.selector or "",
+                "text": action_result.extracted_text[:500],
+            })
+
+        # ---- STEP SUMMARY: LLM-powered condensation every N steps ----
+        if step > 0 and step % SUMMARY_INTERVAL == 0 and len(history) > 5:
+            summary = await _summarize_steps(client, history[:-5], task_spec.goal, log)
+            step_summaries.append(summary)
+            log.info(f"Step {step} | LLM summary generated | {summary[:100]}")
+
+        # ---- AUTO-CHECKPOINT: write checkpoint.json every N steps ----
+        if step > 0 and step % CHECKPOINT_INTERVAL == 0:
+            output_mgr.write_checkpoint(step, accumulated, progress_notes)
 
         # Log the step
         output_mgr.log_step(StepRecord(
@@ -223,6 +384,11 @@ async def run(
         # ---- 5. CHECK TERMINATION ----
         if action.action == "done":
             extracted = action.extracted or {}
+            # Merge accumulated checkpoint data with final extraction
+            if accumulated:
+                merged = dict(accumulated)
+                _deep_merge(merged, extracted)
+                extracted = merged
 
             # Machine-checkable completion: verify required fields (use "is None" not "not" — 0/false are valid)
             missing = [f for f in task_spec.required_fields if f not in extracted or extracted[f] is None]
@@ -271,11 +437,38 @@ async def run(
                     if k in extracted
                 }
 
-            log.info(f"Completed | status=done | steps={step} | fields={len(extracted)}")
+            # Determine final status — check expected_items against the primary list only.
+            # Primary list = the longest list in extracted (the main collection, not auxiliary lists).
+            final_status = "done"
+            completion_notes = list(progress_notes)
+            if task_spec.expected_items > 0:
+                primary_list = max(
+                    (v for v in extracted.values() if isinstance(v, list)),
+                    key=len, default=None,
+                )
+                if primary_list is not None and len(primary_list) < task_spec.expected_items:
+                    final_status = "partial_success"
+                    completion_notes.append(
+                        f"Expected {task_spec.expected_items} items but collected {len(primary_list)}"
+                    )
+
+            log.info(f"Completed | status={final_status} | steps={step} | fields={len(extracted)} | items={items_collected}")
             output_mgr.write_result(
-                status="done", extracted=extracted, judgment=judgment or None,
+                status=final_status, extracted=extracted, judgment=judgment or None,
+                notes=completion_notes,
                 steps=step,
             )
+
+            # Learn from successful runs — distill navigation pattern for future use
+            if final_status == "done" and sample.url:
+                try:
+                    learned = await memory.learn_from_run(
+                        client, sample.url, task_spec.goal, history, step, final_status,
+                    )
+                    if learned:
+                        log.info(f"Memory saved | domain pattern learned for {sample.url}")
+                except Exception as e:
+                    log.debug(f"Memory save failed (non-critical): {e}")
             return
 
         if action.action == "fail":
@@ -313,11 +506,43 @@ async def run(
         else:
             consecutive_failures += 1
 
+        # ---- AUTO-PAGINATION: detect "next page" clicks and grant bonus steps ----
+        if (action.action == "click" and action_result.success
+                and _is_pagination_click(action.selector or "", action_result.description)):
+            pagination_bonus += 3
+            effective_max = task_spec.max_steps + pagination_bonus
+            log.info(f"Step {step} | Pagination detected → +3 bonus steps (effective_max={effective_max})")
+
+        # ---- WATCHDOG: detect stalls and force intervention ----
+        # Only reset when genuinely new data arrived (not duplicate save_progress)
+        if (action.action == "save_progress" and data_changed) \
+                or (action.action == "extract" and action_result.success):
+            last_data_step = step
+
+        steps_since_data = step - last_data_step
+        if steps_since_data >= WATCHDOG_STALL_LIMIT and step < effective_max:
+            log.warning(f"Step {step} | Watchdog: {steps_since_data} steps without new data")
+            if accumulated:
+                output_mgr.write_checkpoint(step, accumulated, progress_notes, status="watchdog_stall")
+            history.append({
+                "step": step,
+                "action": "system_notice",
+                "result": (
+                    f"WARNING: You have not produced new data in {steps_since_data} steps. "
+                    f"You have {effective_max - step} steps left. Either extract/save_progress with data, "
+                    f"or call done with what you have, or call fail if the task cannot be completed."
+                ),
+            })
+            last_data_step = step  # reset to avoid spamming
+
     # Exhausted max_steps without done/fail
-    log.warning(f"Exhausted {task_spec.max_steps} steps without completing")
+    log.warning(f"Exhausted {effective_max} steps (base={task_spec.max_steps}, pagination_bonus={pagination_bonus})")
+    if accumulated:
+        output_mgr.write_checkpoint(step, accumulated, progress_notes, status="max_steps_exceeded")
     output_mgr.write_result(
         status="failed",
-        errors=[f"Exhausted {task_spec.max_steps} steps without completing"],
+        extracted=accumulated or {},
+        errors=[f"Exhausted {effective_max} steps without completing (base={task_spec.max_steps}, bonus={pagination_bonus})"],
         steps=step,
     )
 
@@ -327,6 +552,7 @@ async def _dispatch(
     page: Page,
     snap: dom_extractor.DOMSnapshot,
     output_mgr: OutputManager,
+    seen_screenshot_hashes: set[str] | None = None,
 ) -> ActionResult:
     """Execute one action. Always returns ActionResult, never raises."""
     try:
@@ -347,9 +573,26 @@ async def _dispatch(
         elif action.action == "screenshot":
             data = await browser.take_screenshot(page, full_page=True)
             artifact = output_mgr.save_screenshot(data, action.label or "page", page.url)
+            if seen_screenshot_hashes is not None and artifact.sha256 in seen_screenshot_hashes:
+                page_title = snap.title or "unknown"
+                return ActionResult(
+                    success=True,
+                    description=(
+                        f"Screenshot saved: {artifact.filename} — but this is IDENTICAL to a previous screenshot "
+                        f"of \"{page_title}\" (same SHA256). You are still on the same page. "
+                        f"Do NOT take another screenshot. Navigate to a new page with goto, or call done/fail."
+                    ),
+                )
+            if seen_screenshot_hashes is not None:
+                seen_screenshot_hashes.add(artifact.sha256)
+            page_title = snap.title or "unknown"
+            page_url = snap.url or page.url
             return ActionResult(
                 success=True,
-                description=f"Screenshot saved: {artifact.filename} (sha256: {artifact.sha256[:12]}...)",
+                description=(
+                    f"Screenshot saved: {artifact.filename} "
+                    f"(page: \"{page_title}\", url: {page_url})"
+                ),
             )
 
         elif action.action == "extract":
@@ -358,8 +601,10 @@ async def _dispatch(
         elif action.action == "wait":
             return await browser.wait_for(page, action.selector or "")
 
+        elif action.action == "save_progress":
+            return ActionResult(success=True, description="Progress checkpointed")
+
         elif action.action in ("done", "fail"):
-            # Handled in the main loop
             return ActionResult(success=True, description=f"Action: {action.action}")
 
         else:
@@ -367,6 +612,129 @@ async def _dispatch(
 
     except Exception as e:
         return ActionResult(success=False, error=f"Dispatch error: {str(e)[:200]}")
+
+
+PAGINATION_KEYWORDS = frozenset({
+    "next", "next page", "load more", "show more", "older", "newer",
+    "page 2", "page 3", "page 4", "page 5", "»", "›", "→",
+    "previous", "prev", "back", "forward",
+})
+
+
+def _is_pagination_click(selector: str, result_desc: str) -> bool:
+    """Detect if a click was a pagination action (next page, load more, etc.)."""
+    combined = f"{selector} {result_desc}".lower()
+    return any(kw in combined for kw in PAGINATION_KEYWORDS)
+
+
+INFRA_ERROR_PATTERNS = [
+    "timeout", "net::err", "dns", "connection refused", "connection reset",
+    "network error", "err_connection", "err_name_not_resolved",
+    "err_internet_disconnected", "page crashed", "target closed",
+    "browser has been closed", "navigation error", "ssl",
+]
+
+
+def _is_infra_error(error_text: str) -> bool:
+    """Distinguish infrastructure errors (network, browser) from logic errors (element not found)."""
+    lower = error_text.lower()
+    return any(p in lower for p in INFRA_ERROR_PATTERNS)
+
+
+def _check_termination(
+    step: int,
+    elapsed: float,
+    task_spec,
+    accumulated: dict,
+    items_collected: int,
+    network_errors: int,
+    effective_max: int,
+    log,
+) -> tuple[str, str] | None:
+    """Check if the agent should stop early for a smart reason.
+
+    Returns (status, reason) if termination needed, None to continue.
+    """
+    # 1. Wall-clock timeout
+    if task_spec.max_time_seconds > 0 and elapsed > task_spec.max_time_seconds:
+        has_data = bool(accumulated)
+        status = "partial_success" if has_data else "failed"
+        return status, f"Wall-clock timeout ({elapsed:.0f}s > {task_spec.max_time_seconds}s limit)"
+
+    # 2. Network circuit breaker — too many consecutive infra failures
+    limit = task_spec.max_consecutive_network_errors
+    if network_errors >= limit:
+        has_data = bool(accumulated)
+        status = "partial_success" if has_data else "failed"
+        return status, f"Network circuit breaker: {network_errors} consecutive infrastructure errors"
+
+    # 3. Expected items reached via accumulated data (belt+suspenders with save_progress check)
+    if task_spec.expected_items > 0 and items_collected >= task_spec.expected_items:
+        for array_field in accumulated.values():
+            if isinstance(array_field, list) and len(array_field) >= task_spec.expected_items:
+                return None  # let the agent call done naturally — it already got the nudge
+
+    # 4. Near step budget with accumulated data — warn but don't terminate
+    remaining = effective_max - step
+    if remaining == 5 and accumulated:
+        log.info(f"Step {step} | 5 steps remaining with accumulated data — agent should wrap up soon")
+
+    return None
+
+
+def _deep_merge(base: dict, update: dict) -> None:
+    """Merge update into base, appending *unique* items to lists and recursing into dicts.
+
+    Deduplication uses JSON serialisation so identical dicts aren't appended twice
+    (e.g. the same contributor saved multiple times via save_progress).
+    """
+    for key, val in update.items():
+        if key in base and isinstance(base[key], list) and isinstance(val, list):
+            existing = {json.dumps(item, sort_keys=True, default=str) for item in base[key]}
+            for item in val:
+                serialised = json.dumps(item, sort_keys=True, default=str)
+                if serialised not in existing:
+                    base[key].append(item)
+                    existing.add(serialised)
+        elif key in base and isinstance(base[key], dict) and isinstance(val, dict):
+            _deep_merge(base[key], val)
+        else:
+            base[key] = val
+
+
+async def _summarize_steps(
+    client: AsyncAnthropic,
+    steps: list[dict],
+    goal: str,
+    log,
+) -> str:
+    """Ask Claude (fast model) to summarize a block of steps into 2-3 sentences.
+
+    Uses the cheap/fast model to keep costs low. Falls back to mechanical
+    summary if the LLM call fails.
+    """
+    step_text = "\n".join(
+        f"Step {h['step']}: {h['action']}({json.dumps(h.get('params', {}), default=str)[:80]}) → {h.get('result', '')[:80]}"
+        for h in steps
+    )
+    try:
+        response = await client.messages.create(
+            model=config.LLM_FAST_MODEL,
+            max_tokens=200,
+            messages=[{
+                "role": "user",
+                "content": (
+                    f"Summarize these browser agent steps in 2-3 sentences. "
+                    f"Focus on what was accomplished and what data was collected. "
+                    f"Task goal: {goal}\n\nSteps:\n{step_text}"
+                ),
+            }],
+        )
+        return f"Steps {steps[0]['step']}-{steps[-1]['step']}: {response.content[0].text.strip()}"
+    except Exception as e:
+        log.debug(f"LLM summary failed, using mechanical fallback: {str(e)[:100]}")
+        actions = "; ".join(f"s{h['step']}:{h['action']}" for h in steps)
+        return f"Steps {steps[0]['step']}-{steps[-1]['step']}: {actions}"
 
 
 def _build_messages(
@@ -378,6 +746,11 @@ def _build_messages(
     snap: dom_extractor.DOMSnapshot,
     consecutive_failures: int,
     loop_counter: dict,
+    progress: dict | None = None,
+    accumulated: dict | None = None,
+    step_summaries: list[str] | None = None,
+    current_step: int = 0,
+    memory_hints: str | None = None,
 ) -> list[dict]:
     """Build the message list for the LLM call.
 
@@ -398,13 +771,41 @@ def _build_messages(
     if vision_text:
         parts.append(f"\n## Visual analysis (DOM was insufficient)\n{vision_text}")
 
-    # Action history
+    # Step budget awareness
+    if current_step > 0:
+        remaining = task_spec.max_steps - current_step
+        parts.append(f"\n**Step {current_step} of {task_spec.max_steps}** ({remaining} remaining)")
+
+    # Accumulated data from save_progress calls (long-term memory)
+    if accumulated:
+        acc_text = json.dumps(accumulated, indent=2, default=str)
+        if len(acc_text) > 2000:
+            acc_text = acc_text[:2000] + "\n... (truncated)"
+        parts.append(f"\n## Data collected so far (via save_progress)\n```json\n{acc_text}\n```")
+
+    # Step summaries (condensed history from earlier steps)
+    if step_summaries:
+        parts.append(f"\n## Earlier steps (condensed)\n" + "\n".join(step_summaries[-3:]))
+
+    # Progress summary (persists beyond history window — long-horizon memory)
+    if progress and any(progress.values()):
+        progress_lines = []
+        if progress.get("pages_visited"):
+            progress_lines.append(f"Pages visited: {', '.join(progress['pages_visited'][-10:])}")
+        if progress.get("artifacts"):
+            progress_lines.append(f"Screenshots taken: {', '.join(progress['artifacts'])}")
+        if progress.get("fields_found"):
+            progress_lines.append(f"Data extracted so far: {', '.join(progress['fields_found'][-5:])}")
+        if progress_lines:
+            parts.append(f"\n## Progress so far\n" + "\n".join(progress_lines))
+
+    # Action history (last 5 steps — recent context)
     if history:
         history_text = "\n".join(
             f"Step {h['step']}: {h['action']} → {h.get('result', '')[:100]}"
             for h in history
         )
-        parts.append(f"\n## Actions taken so far (last {len(history)})\n{history_text}")
+        parts.append(f"\n## Recent actions (last {len(history)})\n{history_text}")
 
     # Loop detection nudge
     for (url, act_name), count in loop_counter.items():
@@ -436,6 +837,10 @@ def _build_messages(
     if sample.extra:
         sample_info += f", Extra={json.dumps(sample.extra)}"
     parts.append(f"\n## Sample\n{sample_info}")
+
+    # Long-term memory hints (learned navigation patterns for this domain)
+    if memory_hints and current_step <= 3:
+        parts.append(f"\n{memory_hints}")
 
     # Goal
     parts.append(f"\n## Goal\n{task_spec.goal}")

@@ -16,15 +16,16 @@ class AgentAction(BaseModel):
     """Single action selected by the LLM each step."""
 
     action: Literal[
-        "goto",        # navigate to a URL
-        "click",       # click an element by index or text
-        "type",        # fill an input field
-        "scroll",      # scroll up or down
-        "screenshot",  # capture full-page evidence screenshot
-        "extract",     # read text from an element into history
-        "wait",        # wait for an element to appear
-        "done",        # task complete — write extracted data
-        "fail",        # unrecoverable — write reason and stop
+        "goto",           # navigate to a URL
+        "click",          # click an element by index or text
+        "type",           # fill an input field
+        "scroll",         # scroll up or down
+        "screenshot",     # capture full-page evidence screenshot
+        "extract",        # read text from an element into history
+        "wait",           # wait for an element to appear
+        "save_progress",  # checkpoint partial data without stopping
+        "done",           # task complete — write extracted data
+        "fail",           # unrecoverable — write reason and stop
     ]
     selector: str | None = None     # click, type, extract, wait
     url: str | None = None          # goto
@@ -69,7 +70,7 @@ class SampleResult(BaseModel):
     """Complete output for one sample — written to result.json."""
 
     sample_id: str
-    status: Literal["done", "failed", "needs_review"] = "failed"
+    status: Literal["done", "failed", "needs_review", "partial_success"] = "failed"
     steps: int = 0
     extracted: dict[str, Any] = Field(default_factory=dict)
     artifacts: list[EvidenceArtifact] = Field(default_factory=list)
@@ -189,6 +190,29 @@ def action_tool_schema() -> list[dict]:
                     },
                 },
                 "required": ["selector"],
+            },
+        },
+        {
+            "name": "save_progress",
+            "description": (
+                "Save partial extracted data as a checkpoint WITHOUT stopping the task. "
+                "Use this when you have collected some data (e.g. from one page) and need to "
+                "continue collecting more from other pages. Data is merged across calls — "
+                "each call adds to what was saved before. Continue working after calling this."
+            ),
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "extracted": {
+                        "type": "object",
+                        "description": "Partial extracted data to checkpoint (merged with previous saves)",
+                    },
+                    "note": {
+                        "type": "string",
+                        "description": "Brief note about progress (e.g. 'Completed PR #1 of 5')",
+                    },
+                },
+                "required": ["extracted"],
             },
         },
         {

@@ -1,7 +1,7 @@
 # Evidence output (generated at runtime)
-evidence/
-samples.csv
-combined.csv
+# evidence/
+# samples.csv
+# combined.csv
 *.csv.lock
 
 # Environment
@@ -14,8 +14,8 @@ __pycache__/
 *.pyo
 .venv/
 venv/
-*.log
-*.jsonl
+# *.log
+# *.jsonl
 
 
 # Auth state (contains session cookies)
