@@ -30,9 +30,18 @@ from anthropic import AsyncAnthropic
 from playwright.async_api import Page
 
 import config
+from memory import MemoryStore
 
-# Module-level client — reused across all samples for connection pooling
+# Module-level singletons — reused across all samples for connection pooling
 _client: AsyncAnthropic | None = None
+_memory: MemoryStore | None = None
+
+
+def _get_memory() -> MemoryStore:
+    global _memory
+    if _memory is None:
+        _memory = MemoryStore()
+    return _memory
 
 
 def _get_client() -> AsyncAnthropic:
@@ -68,12 +77,18 @@ async def run(
     log.info(f"Agent loop started | url={sample.url} | max_steps={task_spec.max_steps}")
 
     client = _get_client()
+    memory = _get_memory()
     tools = action_tool_schema()
     history: list[dict] = []
     progress: dict = {"pages_visited": [], "fields_found": [], "artifacts": []}
     loop_counter: dict[tuple, int] = {}  # (url, action_name) → count
     consecutive_failures = 0
     step = 0
+
+    # Long-term memory: retrieve navigation hints for this domain
+    memory_hints = memory.get_hints(sample.url) if sample.url else None
+    if memory_hints:
+        log.info(f"Memory loaded | domain hints available ({len(memory_hints)} chars)")
 
     # Long-horizon state
     accumulated: dict = {}           # merged data from save_progress calls
@@ -167,6 +182,7 @@ async def run(
             accumulated=accumulated,
             step_summaries=step_summaries,
             current_step=step,
+            memory_hints=memory_hints,
         )
 
         # Log everything going into the LLM call — full context for debugging
@@ -442,6 +458,17 @@ async def run(
                 notes=completion_notes,
                 steps=step,
             )
+
+            # Learn from successful runs — distill navigation pattern for future use
+            if final_status == "done" and sample.url:
+                try:
+                    learned = await memory.learn_from_run(
+                        client, sample.url, task_spec.goal, history, step, final_status,
+                    )
+                    if learned:
+                        log.info(f"Memory saved | domain pattern learned for {sample.url}")
+                except Exception as e:
+                    log.debug(f"Memory save failed (non-critical): {e}")
             return
 
         if action.action == "fail":
@@ -723,6 +750,7 @@ def _build_messages(
     accumulated: dict | None = None,
     step_summaries: list[str] | None = None,
     current_step: int = 0,
+    memory_hints: str | None = None,
 ) -> list[dict]:
     """Build the message list for the LLM call.
 
@@ -809,6 +837,10 @@ def _build_messages(
     if sample.extra:
         sample_info += f", Extra={json.dumps(sample.extra)}"
     parts.append(f"\n## Sample\n{sample_info}")
+
+    # Long-term memory hints (learned navigation patterns for this domain)
+    if memory_hints and current_step <= 3:
+        parts.append(f"\n{memory_hints}")
 
     # Goal
     parts.append(f"\n## Goal\n{task_spec.goal}")
