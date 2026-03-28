@@ -746,12 +746,12 @@ def _estimate_tokens(text: str) -> int:
     return max(1, len(text) // 4)
 
 
-# Token budget allocation — keeps prompts lean for speed and cost.
-# Claude Sonnet has 200K context, but we target ~12K for fast responses.
-PROMPT_TOKEN_BUDGET = 12_000
-HISTORY_TOKEN_SHARE = 0.25  # up to 25% of budget for history (3,000 tokens)
-MIN_HISTORY_ITEMS = 3
-MAX_HISTORY_ITEMS = 20
+# Token budget = 8% of model context window (floor 8K).
+# Why 8%: LLMs lose attention on mid-prompt content above ~20% fill ("lost in the middle").
+PROMPT_TOKEN_BUDGET = max(8_000, int(config.LLM_CONTEXT_WINDOW * 0.08))
+HISTORY_TOKEN_SHARE = 0.30  # 30% of budget goes to action history
+MIN_HISTORY_ITEMS = 5
+MAX_HISTORY_ITEMS = 25
 
 # Importance weights — data-producing actions get priority in the window
 _IMPORTANCE: dict[str, int] = {
