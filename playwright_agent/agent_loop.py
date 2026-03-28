@@ -6,7 +6,7 @@ Everything else is scaffolding. This file is the agent.
 
 Key invariants:
 - Claude always returns a typed tool call (tool_choice=any), never prose
-- History capped at last 5 actions — token cost stays flat
+- History window is dynamic — fits as many recent actions as the token budget allows
 - Actions always return ActionResult, never raise
 - done/fail terminate the loop — max_steps is the hard ceiling
 - Loop detection: same (url, action) 3+ times → inject recovery nudge
@@ -169,10 +169,14 @@ async def run(
                 vision_text = ""
 
         # ---- 2. BUILD PROMPT ----
+        # Dynamic history window: estimate fixed prompt costs, then fit history to budget
+        fixed_tokens = _estimate_tokens(page_state + vision_text + task_spec.system_prompt + task_spec.goal)
+        fitted_history = _fit_history(history, fixed_tokens)
+
         messages = _build_messages(
             page_state=page_state,
             vision_text=vision_text,
-            history=history[-5:],  # rolling 5-action cap
+            history=fitted_history,
             task_spec=task_spec,
             sample=sample,
             snap=snap,
@@ -189,11 +193,11 @@ async def run(
         log.info(
             f"Step {step} LLM input | "
             f"dom_nodes={len(snap.nodes)} | confidence={snap.confidence:.2f} | "
-            f"history_items={len(history[-5:])} | vision={'yes' if vision_text else 'no'}"
+            f"history_items={len(fitted_history)} | vision={'yes' if vision_text else 'no'}"
         )
         log.debug(f"Step {step} system_prompt | {task_spec.system_prompt[:300]}")
         log.debug(f"Step {step} page_state | {page_state[:500]}")
-        log.debug(f"Step {step} history | {json.dumps(history[-5:], default=str)[:500]}")
+        log.debug(f"Step {step} history | {json.dumps(fitted_history, default=str)[:500]}")
         if vision_text:
             log.debug(f"Step {step} vision | {vision_text[:300]}")
 
@@ -354,8 +358,8 @@ async def run(
             })
 
         # ---- STEP SUMMARY: LLM-powered condensation every N steps ----
-        if step > 0 and step % SUMMARY_INTERVAL == 0 and len(history) > 5:
-            summary = await _summarize_steps(client, history[:-5], task_spec.goal, log)
+        if step > 0 and step % SUMMARY_INTERVAL == 0 and len(history) > MIN_HISTORY_ITEMS:
+            summary = await _summarize_steps(client, history[:-MIN_HISTORY_ITEMS], task_spec.goal, log)
             step_summaries.append(summary)
             log.info(f"Step {step} | LLM summary generated | {summary[:100]}")
 
@@ -737,6 +741,83 @@ async def _summarize_steps(
         return f"Steps {steps[0]['step']}-{steps[-1]['step']}: {actions}"
 
 
+def _estimate_tokens(text: str) -> int:
+    """Rough token estimate: ~4 chars per token for English/code mix."""
+    return max(1, len(text) // 4)
+
+
+# Token budget allocation — keeps prompts lean for speed and cost.
+# Claude Sonnet has 200K context, but we target ~12K for fast responses.
+PROMPT_TOKEN_BUDGET = 12_000
+HISTORY_TOKEN_SHARE = 0.25  # up to 25% of budget for history (3,000 tokens)
+MIN_HISTORY_ITEMS = 3
+MAX_HISTORY_ITEMS = 20
+
+# Importance weights — data-producing actions get priority in the window
+_IMPORTANCE: dict[str, int] = {
+    "save_progress": 3,
+    "done": 3,
+    "fail": 3,
+    "extract": 2,
+    "screenshot": 1,
+    "system_notice": 2,
+    "click": 1,
+    "goto": 1,
+    "type": 1,
+    "scroll": 0,
+    "wait": 0,
+}
+
+
+def _fit_history(full_history: list[dict], fixed_tokens: int) -> list[dict]:
+    """Dynamically select history items that fit within the token budget.
+
+    Strategy (hybrid approach from industry best practices):
+    1. Calculate remaining token budget after fixed costs (DOM, vision, goal, etc.)
+    2. Always include the last MIN_HISTORY_ITEMS (recency matters most)
+    3. For older items, score by importance and include highest-value ones first
+    4. Stop when budget is exhausted or MAX_HISTORY_ITEMS reached
+    """
+    budget = max(500, int(PROMPT_TOKEN_BUDGET * HISTORY_TOKEN_SHARE))
+
+    if not full_history:
+        return []
+
+    # Always include the most recent items (verbatim recency window)
+    recency_window = full_history[-MIN_HISTORY_ITEMS:]
+    recency_tokens = sum(_estimate_tokens(json.dumps(h, default=str)) for h in recency_window)
+
+    remaining_budget = budget - recency_tokens
+    if remaining_budget <= 0 or len(full_history) <= MIN_HISTORY_ITEMS:
+        return recency_window
+
+    # Score older items by importance and select the most valuable ones
+    older = full_history[:-MIN_HISTORY_ITEMS]
+    scored = []
+    for i, item in enumerate(older):
+        action = item.get("action", "")
+        importance = _IMPORTANCE.get(action, 0)
+        recency_bonus = i / max(len(older), 1)  # 0.0 (oldest) → 1.0 (most recent)
+        score = importance + recency_bonus
+        tokens = _estimate_tokens(json.dumps(item, default=str))
+        scored.append((score, tokens, item))
+
+    scored.sort(key=lambda x: x[0], reverse=True)
+
+    selected_older = []
+    tokens_used = 0
+    for score, tokens, item in scored:
+        if tokens_used + tokens > remaining_budget:
+            continue
+        selected_older.append(item)
+        tokens_used += tokens
+        if len(selected_older) + len(recency_window) >= MAX_HISTORY_ITEMS:
+            break
+
+    selected_older.sort(key=lambda x: x.get("step", 0))
+    return selected_older + recency_window
+
+
 def _build_messages(
     page_state: str,
     vision_text: str,
@@ -758,7 +839,7 @@ def _build_messages(
       USER message with:
         - Current page state (DOM)
         - Vision analysis (if activated)
-        - Action history (last 5)
+        - Action history (dynamically sized)
         - Recovery nudges (if stuck)
         - Goal + output schema
     """
@@ -805,7 +886,7 @@ def _build_messages(
             f"Step {h['step']}: {h['action']} → {h.get('result', '')[:100]}"
             for h in history
         )
-        parts.append(f"\n## Recent actions (last {len(history)})\n{history_text}")
+        parts.append(f"\n## Action history ({len(history)} items, budget-fitted)\n{history_text}")
 
     # Loop detection nudge
     for (url, act_name), count in loop_counter.items():
