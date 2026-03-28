@@ -171,15 +171,41 @@ aria_snapshot() → parse YAML → filter semantic → keyword boost → trim �
 
 **CDP fallback**: If `aria_snapshot()` returns < 5 nodes (broken a11y tree), falls back to Chrome DevTools Protocol `Accessibility.getFullAXTree`.
 
-**DOM confidence**: Computed from canvas/SVG/missing-ARIA ratios. Below 0.6 triggers vision.
+**DOM confidence**: A penalty score starting at 1.0, computed by injecting JavaScript into the live page:
+
+```
+score = 1.0
+score -= 0.3 × (canvas_count / total_nodes)        # <canvas> elements are black boxes to the a11y tree
+score -= 0.2 × (missing_aria_labels / interactive)  # icon-only buttons with no text and no aria-label
+score -= 0.1 × (svg_count / interactive)            # SVG status icons (✓/✗) have no text equivalent
+if semantic_nodes < 10: score -= 0.3                 # barely any meaningful elements found
+```
+
+- **canvas_count**: `document.querySelectorAll('canvas').length` — charts, maps, drawing apps are invisible to DOM
+- **missing_aria_labels**: buttons/links/inputs that have *no* `aria-label` and *no* visible text (e.g., `<button><svg>...</svg></button>` — a hamburger menu icon). The agent can't click what it can't name
+- **svg_count**: SVGs often represent visual-only status indicators (green checkmark, red X) that the DOM sees as `[img]` with no text
+- **semantic_nodes**: count of nodes with meaningful roles (heading, link, button, textbox, etc). Below 10 = page is mostly canvas/images or still loading
+
+Normal pages (GitHub, LinkedIn) score ~0.9. A dashboard with SVG charts and icon buttons might score 0.4 — that triggers vision.
 
 ### 6. Vision Module (`core/vision.py`)
 
-Activated when DOM is insufficient. Sends screenshot to Claude with a **targeted question** (never "describe this page"):
+Activated when `dom_confidence < 0.6`. The question sent to Claude is **targeted, not open-ended** — it tells Claude exactly what the DOM already captured and asks what's missing:
 
+```python
+f"The DOM shows interactive elements but some visual information is missing. "
+f"Based on the task goal: '{task_goal}', "
+f"what information is visible in this screenshot that the following DOM text does not capture?\n\n"
+f"DOM text:\n{dom_context[:1000]}\n\n"
+f"Focus on: status icons, color-coded badges, visual indicators, "
+f"and any text rendered as images or SVGs."
 ```
-"What is the status icon next to 'build / test'? Pass, fail, or pending?"
-```
+
+It's not "describe this page." It's: "here's what the DOM already captured, here's the task goal — what **visual** info is the DOM missing?"
+
+**Example**: Task is "check CI pipeline status." The page has green/red SVG checkmarks next to build steps. The DOM only sees `[img]` or `[svg]` with no text. Vision sees the screenshot and responds: *"The icon next to 'build/test' is a green checkmark — status is passing."*
+
+**The flow**: our code reads DOM → our code computes confidence → if low, our code takes a screenshot + builds the targeted question → Claude vision answers → the answer is appended to the DOM text that goes into the DECIDE step.
 
 Uses `AsyncAnthropic` with shared module-level client for connection pooling.
 
