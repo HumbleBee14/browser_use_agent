@@ -547,19 +547,25 @@ async def _dispatch(
             data = await browser.take_screenshot(page, full_page=True)
             artifact = output_mgr.save_screenshot(data, action.label or "page", page.url)
             if seen_screenshot_hashes is not None and artifact.sha256 in seen_screenshot_hashes:
+                page_title = snap.title or "unknown"
                 return ActionResult(
                     success=True,
                     description=(
                         f"Screenshot saved: {artifact.filename} — but this is IDENTICAL to a previous screenshot "
-                        f"(same SHA256). You are still on the same page. Do NOT take another screenshot. "
-                        f"Navigate to a new page with goto, or call done/fail."
+                        f"of \"{page_title}\" (same SHA256). You are still on the same page. "
+                        f"Do NOT take another screenshot. Navigate to a new page with goto, or call done/fail."
                     ),
                 )
             if seen_screenshot_hashes is not None:
                 seen_screenshot_hashes.add(artifact.sha256)
+            page_title = snap.title or "unknown"
+            page_url = snap.url or page.url
             return ActionResult(
                 success=True,
-                description=f"Screenshot saved: {artifact.filename} (sha256: {artifact.sha256[:12]}...)",
+                description=(
+                    f"Screenshot saved: {artifact.filename} "
+                    f"(page: \"{page_title}\", url: {page_url})"
+                ),
             )
 
         elif action.action == "extract":
