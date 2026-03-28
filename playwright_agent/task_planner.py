@@ -148,7 +148,7 @@ KEY PATTERNS FROM EXAMPLES:
 - system_prompt is SHORT and DIRECTIVE — tells agent exactly what to do step by step
 - system_prompt MUST always include: "Read the data from the page state text provided to you. Take ONE screenshot for evidence, then call done with all extracted data."
 - system_prompt always says "Call done as soon as you have the data" and "Set missing fields to null"
-- required_artifacts labels must match the screenshot label the agent will use
+- required_artifacts uses SHORT GENERIC labels like ["profile", "page"] — NOT numbered like ["profile_1", "profile_2"]. The agent may name screenshots "profile_alice", "profile_bob" etc., and the check passes if ANY screenshot contains the label as a substring. So ["profile"] matches "02_profile_alice.png". NEVER use numbered artifact labels.
 - For multi-item tasks: ONE sample with listing URL, agent extracts all items, returns as array
 - max_steps: single page = 8-15, multi-page navigation = 15-25, discovery/listing = 25-40
 - IMPORTANT: The agent reads data from the DOM/page state text, NOT from screenshots. Screenshots are for evidence only. The system_prompt must make this clear.

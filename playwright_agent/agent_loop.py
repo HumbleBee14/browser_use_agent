@@ -277,14 +277,20 @@ async def run(
         elif action_result.success:
             network_errors = 0  # reset on any successful action
 
+        data_changed = False  # tracks whether save_progress added genuinely new data
+
         # ---- SAVE_PROGRESS: checkpoint partial data without stopping ----
         if action.action == "save_progress":
             partial = action.extracted or {}
+            snapshot_before = json.dumps(accumulated, sort_keys=True, default=str)
             _deep_merge(accumulated, partial)
+            snapshot_after = json.dumps(accumulated, sort_keys=True, default=str)
+            data_changed = snapshot_before != snapshot_after
             note = action.note or f"Checkpoint at step {step}"
             progress_notes.append(note)
-            items_collected += 1
-            log.info(f"Step {step} | save_progress #{items_collected} | {note} | keys={list(partial.keys())}")
+            if data_changed:
+                items_collected += 1
+            log.info(f"Step {step} | save_progress #{items_collected} | new_data={data_changed} | {note} | keys={list(partial.keys())}")
             output_mgr.write_checkpoint(step, accumulated, progress_notes)
 
             # Check if we've collected the expected number of items
@@ -296,6 +302,16 @@ async def run(
                     "result": (
                         f"You have collected {items_collected} of {task_spec.expected_items} expected items. "
                         f"All items collected. Call done now with the complete data."
+                    ),
+                })
+            elif not data_changed:
+                history.append({
+                    "step": step,
+                    "action": "system_notice",
+                    "result": (
+                        f"No new data added (duplicate of previously saved data). "
+                        f"Stop calling save_progress and take a real action: "
+                        f"use goto to navigate, click to interact, or call done if finished."
                     ),
                 })
             else:
@@ -404,17 +420,20 @@ async def run(
                     if k in extracted
                 }
 
-            # Determine final status — check expected_items completeness
+            # Determine final status — check expected_items against the primary list only.
+            # Primary list = the longest list in extracted (the main collection, not auxiliary lists).
             final_status = "done"
             completion_notes = list(progress_notes)
             if task_spec.expected_items > 0:
-                for val in extracted.values():
-                    if isinstance(val, list) and len(val) < task_spec.expected_items:
-                        final_status = "partial_success"
-                        completion_notes.append(
-                            f"Expected {task_spec.expected_items} items but collected {len(val)}"
-                        )
-                        break
+                primary_list = max(
+                    (v for v in extracted.values() if isinstance(v, list)),
+                    key=len, default=None,
+                )
+                if primary_list is not None and len(primary_list) < task_spec.expected_items:
+                    final_status = "partial_success"
+                    completion_notes.append(
+                        f"Expected {task_spec.expected_items} items but collected {len(primary_list)}"
+                    )
 
             log.info(f"Completed | status={final_status} | steps={step} | fields={len(extracted)} | items={items_collected}")
             output_mgr.write_result(
@@ -467,9 +486,9 @@ async def run(
             log.info(f"Step {step} | Pagination detected → +3 bonus steps (effective_max={effective_max})")
 
         # ---- WATCHDOG: detect stalls and force intervention ----
-        if (action.action == "save_progress"
-                or (action.action == "extract" and action_result.success)
-                or action.action == "screenshot"):
+        # Only reset when genuinely new data arrived (not duplicate save_progress)
+        if (action.action == "save_progress" and data_changed) \
+                or (action.action == "extract" and action_result.success):
             last_data_step = step
 
         steps_since_data = step - last_data_step
@@ -618,10 +637,19 @@ def _check_termination(
 
 
 def _deep_merge(base: dict, update: dict) -> None:
-    """Merge update into base, appending to lists and recursing into dicts."""
+    """Merge update into base, appending *unique* items to lists and recursing into dicts.
+
+    Deduplication uses JSON serialisation so identical dicts aren't appended twice
+    (e.g. the same contributor saved multiple times via save_progress).
+    """
     for key, val in update.items():
         if key in base and isinstance(base[key], list) and isinstance(val, list):
-            base[key].extend(val)
+            existing = {json.dumps(item, sort_keys=True, default=str) for item in base[key]}
+            for item in val:
+                serialised = json.dumps(item, sort_keys=True, default=str)
+                if serialised not in existing:
+                    base[key].append(item)
+                    existing.add(serialised)
         elif key in base and isinstance(base[key], dict) and isinstance(val, dict):
             _deep_merge(base[key], val)
         else:

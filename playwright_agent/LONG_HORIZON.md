@@ -1,7 +1,6 @@
 # Long-Horizon Task Support
 
 **Branch:** `long-horizon-test`
-**Commits:** 3 (Phase 1, Phase 2+3, Smart Termination)
 
 ---
 
@@ -10,6 +9,7 @@
 Standard tasks (profile extraction, single-page audit) complete in 2-10 steps. Long-horizon tasks — multi-page audits, cross-link navigation chains, paginated data collection — need 30-50+ steps.
 
 Before these changes, the agent had:
+
 - Hard `max_steps` ceiling (only termination)
 - Rolling 5-action history (forgets everything older)
 - All-or-nothing output (`done` or `failed`, no partial saves)
@@ -17,9 +17,7 @@ Before these changes, the agent had:
 
 ---
 
-## What Was Built
-
-### Phase 1 — Incremental Checkpointing
+### Part 1 — Incremental Checkpointing
 
 **Files changed:** `agent_loop.py`, `models/actions.py`, `tools/output.py`
 
@@ -53,6 +51,7 @@ Written to the sample's evidence folder every 5 steps and on every `save_progres
 ```
 
 Watch it live while the agent runs:
+
 ```bash
 watch -n 2 cat evidence/run_XXXX/sample_id/checkpoint.json
 ```
@@ -67,7 +66,7 @@ The full `accumulated` dict (from all `save_progress` calls) is shown in the pro
 
 ---
 
-### Phase 2 — Smarter Memory
+### Part 2 — Smarter Memory
 
 **Files changed:** `agent_loop.py`
 
@@ -82,6 +81,7 @@ Navigated back to the list.
 ```
 
 This replaces the raw step list for old history. The agent sees:
+
 - LLM summaries of earlier work (long-term memory)
 - Last 5 raw actions (recent context)
 - Full accumulated data (what was collected)
@@ -94,7 +94,7 @@ Every `extract` action result is now stored in `accumulated["extracted_texts"]`.
 
 ---
 
-### Phase 3 — Continuous Operation
+### Part 3 — Continuous Operation
 
 **Files changed:** `agent_loop.py`, `task_planner.py`, `main.py`
 
@@ -132,20 +132,21 @@ Also writes a checkpoint so no accumulated data is lost if the stall continues.
 
 Before every step, `_check_termination()` evaluates multiple signals:
 
-| Trigger | Status | When |
-|---------|--------|------|
-| `done` + all requirements met | `done` | Agent satisfied all fields + artifacts |
-| `done` + array count < expected | `partial_success` | Got some items but not all |
-| Wall-clock timeout | `partial_success` / `failed` | `max_time_seconds` exceeded |
-| Network circuit breaker | `partial_success` / `failed` | 5 consecutive infra errors |
-| Watchdog stall | warning injected | 5 steps, no new data |
-| `max_steps` exhausted | `failed` | Hard ceiling (accumulated data saved) |
-| LLM API error | `failed` | Claude unreachable |
-| `fail(reason)` | `failed` | Agent gives up intentionally |
+| Trigger                         | Status                       | When                                   |
+| ------------------------------- | ---------------------------- | -------------------------------------- |
+| `done` + all requirements met   | `done`                       | Agent satisfied all fields + artifacts |
+| `done` + array count < expected | `partial_success`            | Got some items but not all             |
+| Wall-clock timeout              | `partial_success` / `failed` | `max_time_seconds` exceeded            |
+| Network circuit breaker         | `partial_success` / `failed` | 5 consecutive infra errors             |
+| Watchdog stall                  | warning injected             | 5 steps, no new data                   |
+| `max_steps` exhausted           | `failed`                     | Hard ceiling (accumulated data saved)  |
+| LLM API error                   | `failed`                     | Claude unreachable                     |
+| `fail(reason)`                  | `failed`                     | Agent gives up intentionally           |
 
 **Infrastructure error classification:**
 
 `_is_infra_error()` distinguishes network/browser failures from logic errors:
+
 - Infra: timeout, DNS, connection refused, page crashed, SSL, browser closed
 - Logic: element not found, click failed, selector mismatch
 
@@ -170,13 +171,13 @@ When the agent collected some data but couldn't finish (site down, timeout, inco
 
 ## New Files Created
 
-| File | Purpose |
-|------|---------|
-| `tasks/github_pr_audit_chain.json` | PR audit task spec (50 steps, judgment, save_progress) |
+| File                                       | Purpose                                                  |
+| ------------------------------------------ | -------------------------------------------------------- |
+| `tasks/github_pr_audit_chain.json`         | PR audit task spec (50 steps, judgment, save_progress)   |
 | `tasks/github_contributor_deep_audit.json` | Contributor deep audit (40 steps, cross-page navigation) |
-| `tasks/inputs/github_pr_chain.csv` | Input CSV for PR audit |
-| `tasks/inputs/github_pr_audit.csv` | Alternative PR input |
-| `tasks/inputs/github_contributors.csv` | Input CSV for contributor audit |
+| `tasks/inputs/github_pr_chain.csv`         | Input CSV for PR audit                                   |
+| `tasks/inputs/github_pr_audit.csv`         | Alternative PR input                                     |
+| `tasks/inputs/github_contributors.csv`     | Input CSV for contributor audit                          |
 
 ---
 
@@ -193,12 +194,14 @@ python main.py --task tasks/github_contributor_deep_audit.json \
 **What happens:** Agent visits vscode contributors page → clicks top 3 contributor profiles → extracts name/company/location/followers from each → screenshots each → `save_progress` after each → navigates back → repeats.
 
 **What to watch for:**
+
 - `checkpoint.json` appearing and growing after each contributor
 - Agent navigating back to the contributors list between profiles
 - Console showing `save_progress #1`, `save_progress #2`, `save_progress #3`
 - Final `result.json` with all 3 contributors merged
 
 **Monitor checkpoint live (in another terminal):**
+
 ```bash
 watch -n 2 type playwright_agent\evidence\run_*\vscode_contributors\checkpoint.json
 ```

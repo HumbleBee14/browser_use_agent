@@ -251,6 +251,12 @@ async def run(args: argparse.Namespace) -> None:
             if disc_samples:
                 planned_samples = disc_samples
                 console.print(f"  [green]Discovered {len(disc_samples)} samples[/green]")
+            else:
+                console.print("[bold red]Discovery returned 0 samples — aborting.[/bold red]")
+                console.print("[dim]The discovery agent could not find individual URLs on the listing page.[/dim]")
+                console.print("[dim]Try providing explicit URLs via --input CSV instead.[/dim]")
+                logger.error("Discovery returned 0 samples, aborting to prevent misleading single-page run")
+                return
 
         # Log what the planner generated — visible in console + log file
         console.print(f"\n[green]Generated Task Spec:[/green]")
