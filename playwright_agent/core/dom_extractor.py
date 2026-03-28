@@ -124,6 +124,9 @@ async def snapshot(page: Page, keywords: list[str] | None = None) -> DOMSnapshot
     # Pass 4: trim to budget
     nodes = nodes[:MAX_NODES]
 
+    # Read current input values so the agent can see what's already filled
+    await _enrich_input_values(page, nodes)
+
     # Assign indices and build element_map
     dom_nodes = []
     element_map = {}
@@ -308,6 +311,37 @@ def _parse_cdp_ax_tree(cdp_nodes: list[dict]) -> list[DOMNode]:
 
         nodes.append(node)
     return nodes
+
+
+async def _enrich_input_values(page: Page, nodes: list[DOMNode]) -> None:
+    """Read current values of text inputs, checkboxes, radios from the live page.
+
+    This fixes the a11y tree limitation where filled fields still show as empty.
+    After this, the agent sees: [textbox] "Customer name:" (value="John Smith")
+    """
+    try:
+        values = await page.evaluate("""() => {
+            const results = {};
+            document.querySelectorAll('input, textarea, select').forEach(el => {
+                const label = el.getAttribute('aria-label') || el.getAttribute('name') || el.id || '';
+                if (el.type === 'checkbox' || el.type === 'radio') {
+                    results[label] = el.checked ? 'checked' : 'unchecked';
+                } else if (el.value) {
+                    results[label] = el.value;
+                }
+            });
+            return results;
+        }""")
+
+        # Match values to nodes by name similarity
+        for node in nodes:
+            if node.role in ("textbox", "checkbox", "radio", "combobox"):
+                for label, val in values.items():
+                    if label and node.name and label.lower() in node.name.lower():
+                        node.value = str(val)
+                        break
+    except Exception:
+        pass  # Non-critical — best effort
 
 
 def _filter_semantic(nodes: list[DOMNode]) -> list[DOMNode]:

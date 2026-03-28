@@ -110,6 +110,18 @@ async def run(
             loop_counter=loop_counter,
         )
 
+        # Log everything going into the LLM call — full context for debugging
+        log.info(
+            f"Step {step} LLM input | "
+            f"dom_nodes={len(snap.nodes)} | confidence={snap.confidence:.2f} | "
+            f"history_items={len(history[-5:])} | vision={'yes' if vision_text else 'no'}"
+        )
+        log.debug(f"Step {step} system_prompt | {task_spec.system_prompt[:300]}")
+        log.debug(f"Step {step} page_state | {page_state[:500]}")
+        log.debug(f"Step {step} history | {json.dumps(history[-5:], default=str)[:500]}")
+        if vision_text:
+            log.debug(f"Step {step} vision | {vision_text[:300]}")
+
         # ---- 3. DECIDE (LLM call with prompt caching) ----
         # System prompt + tools are static across all steps → cache them
         try:
@@ -145,6 +157,12 @@ async def run(
             ))
             consecutive_failures += 1
             continue
+
+        # Log Claude's raw response
+        log.debug(
+            f"Step {step} LLM response | tool={tool_block.name} | "
+            f"input={json.dumps(tool_block.input, default=str)[:300]}"
+        )
 
         try:
             action = AgentAction(action=tool_block.name, **tool_block.input)
@@ -272,6 +290,22 @@ async def run(
         # ---- 6. LOOP & FAILURE TRACKING ----
         loop_key = (page.url, action.action)
         loop_counter[loop_key] = loop_counter.get(loop_key, 0) + 1
+
+        # Track consecutive same action type (catches screenshot spam even if hash differs)
+        # Only triggers on 3+ CONSECUTIVE same actions — a different action in between resets it
+        if len(history) >= 3:
+            last_3_actions = [h.get("action") for h in history[-3:]]
+            if len(set(last_3_actions)) == 1 and last_3_actions[0] != "system_notice":
+                # Same action 3 times in a row — inject hard nudge
+                history.append({
+                    "step": step,
+                    "action": "system_notice",
+                    "result": (
+                        f"You have called '{last_3_actions[0]}' 3 times consecutively. "
+                        f"STOP repeating this action. You already have the page data in the "
+                        f"page state text above. Extract the fields and call done now."
+                    ),
+                })
 
         if action_result.success:
             consecutive_failures = 0

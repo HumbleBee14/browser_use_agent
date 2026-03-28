@@ -1,0 +1,32 @@
+{
+  "task_id": "form_fill_demo",
+  "phase": "execution",
+  "start_url": "",
+
+  "system_prompt": "You are a browser agent filling out a web form.\n\nHOW TO INTERACT WITH FORM ELEMENTS:\n- Text inputs: use type(selector, text)\n- Radio buttons: use click(selector) to select one\n- Checkboxes: use click(selector) to check/uncheck\n- Submit button: use click(selector)\n\nSTEPS:\n1. Take ONE screenshot labeled 'empty_form'\n2. Fill text fields: name='John Smith', tel='555-0123', email='john@example.com', delivery='18:00', comments='Test order'\n3. Click a radio button to select pizza size\n4. Click checkboxes for toppings\n5. Take ONE screenshot labeled 'filled_form'\n6. Click the Submit button\n7. Take ONE screenshot labeled 'result'\n8. Call done immediately\n\nDo NOT repeat filling the same fields. Each field only needs to be filled ONCE.",
+
+  "goal": "Fill the form with test data, screenshot before and after submission, extract whether submission succeeded.",
+
+  "keywords": ["customer", "name", "telephone", "email", "size", "topping", "delivery", "submit", "order"],
+
+  "output_schema": {
+    "form_submitted": "boolean",
+    "response_status": "string | null",
+    "fields_filled": "array | null"
+  },
+
+  "max_steps": 20,
+
+  "required_fields": ["form_submitted"],
+  "required_artifacts": ["empty_form"],
+
+  "judgment_required": false,
+  "judgment_question": null,
+  "judgment_output_schema": null,
+
+  "pagination": false,
+  "stop_condition": "form submitted and result captured",
+
+  "input_schema": {},
+  "auth_profile": null
+}

@@ -1,0 +1,37 @@
+{
+  "task_id": "linkedin_enrichment",
+  "phase": "execution",
+  "start_url": "",
+
+  "system_prompt": "You are a browser agent extracting LinkedIn profile data. You are already logged in. Take ONE screenshot labeled 'profile_top'. Then read the page state text — it already contains the person's name, headline, company, and other details. Extract what you can see. If you need education or tenure, scroll down ONCE and read again. Call done immediately with all fields. Do NOT take more than 2 screenshots. Do NOT revisit the page.",
+
+  "goal": "Extract linkedin_url, full_name, headline, current_company, school, tenure from the LinkedIn profile. Take one screenshot.",
+
+  "keywords": ["experience", "education", "company", "school", "university", "present", "years", "months"],
+
+  "output_schema": {
+    "linkedin_url": "string",
+    "full_name": "string",
+    "headline": "string | null",
+    "current_company": "string | null",
+    "school": "string | null",
+    "tenure": "string | null"
+  },
+
+  "max_steps": 15,
+
+  "required_fields": ["full_name"],
+  "required_artifacts": ["profile_top"],
+
+  "judgment_required": false,
+  "judgment_question": null,
+  "judgment_output_schema": null,
+
+  "pagination": false,
+  "stop_condition": "profile fields extracted and screenshot taken",
+
+  "input_schema": {
+    "name": "string"
+  },
+  "auth_profile": "linkedin_auth.json"
+}

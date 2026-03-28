@@ -1,0 +1,39 @@
+{
+  "task_id": "github_blame_review",
+  "phase": "execution",
+  "start_url": "",
+
+  "system_prompt": "You are a browser agent reviewing code blame history for audit purposes. You are given a file URL on GitHub.\n1. Navigate to the file page. Take a screenshot labeled 'file_view'.\n2. Click the 'Blame' button to switch to Blame View.\n3. Take a screenshot labeled 'blame_view'.\n4. Read the blame annotations from the page state — find who last modified the file, when, and what the commit message was.\n5. Call done with all extracted fields. Set unknown fields to null.\n\nDo NOT take more than 3 screenshots. Read data from the page state text, not from screenshots.",
+
+  "goal": "Extract: file_path, last_modified_date, last_modified_author, last_commit_message, within_threshold (true if modified within the last year). Take screenshots of file view and blame view.",
+
+  "keywords": ["blame", "commit", "author", "ago", "modified", "years", "months", "days"],
+
+  "output_schema": {
+    "file_path": "string",
+    "last_modified_date": "string | null",
+    "last_modified_author": "string | null",
+    "last_commit_message": "string | null",
+    "within_threshold": "boolean | null"
+  },
+
+  "max_steps": 15,
+
+  "required_fields": ["file_path"],
+  "required_artifacts": ["file_view"],
+
+  "judgment_required": true,
+  "judgment_question": "Was this file materially changed recently? Consider: when was the last modification, and does the commit message suggest a change to business logic or calculations?",
+  "judgment_output_schema": {
+    "answer": "yes | no | inconclusive",
+    "confidence": "0.0-1.0",
+    "reasoning": "string",
+    "evidence_refs": "array"
+  },
+
+  "pagination": false,
+  "stop_condition": "blame data extracted, screenshots taken, judgment recorded",
+
+  "input_schema": {},
+  "auth_profile": null
+}
