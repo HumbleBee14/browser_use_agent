@@ -320,25 +320,51 @@ async def _enrich_input_values(page: Page, nodes: list[DOMNode]) -> None:
     After this, the agent sees: [textbox] "Customer name:" (value="John Smith")
     """
     try:
+        # Get ALL input values with multiple identifiers for matching
         values = await page.evaluate("""() => {
-            const results = {};
+            const results = [];
             document.querySelectorAll('input, textarea, select').forEach(el => {
-                const label = el.getAttribute('aria-label') || el.getAttribute('name') || el.id || '';
+                const labels = [
+                    el.getAttribute('aria-label') || '',
+                    el.getAttribute('name') || '',
+                    el.getAttribute('placeholder') || '',
+                    el.id || '',
+                ];
+                // Also find associated <label> text
+                if (el.id) {
+                    const label = document.querySelector('label[for="' + el.id + '"]');
+                    if (label) labels.push(label.textContent.trim());
+                }
+                const prev = el.previousElementSibling;
+                if (prev && prev.tagName === 'LABEL') labels.push(prev.textContent.trim());
+
+                let val = '';
                 if (el.type === 'checkbox' || el.type === 'radio') {
-                    results[label] = el.checked ? 'checked' : 'unchecked';
-                } else if (el.value) {
-                    results[label] = el.value;
+                    val = el.checked ? 'checked' : '';
+                } else {
+                    val = el.value || '';
+                }
+                if (val) {
+                    results.push({ labels: labels.filter(l => l), value: val });
                 }
             });
             return results;
         }""")
 
-        # Match values to nodes by name similarity
+        # Match by any label overlap with node name
         for node in nodes:
-            if node.role in ("textbox", "checkbox", "radio", "combobox"):
-                for label, val in values.items():
-                    if label and node.name and label.lower() in node.name.lower():
-                        node.value = str(val)
+            if node.role in ("textbox", "checkbox", "radio", "combobox") and not node.value:
+                for entry in values:
+                    matched = False
+                    for label in entry["labels"]:
+                        # Match if label appears in node name or vice versa
+                        if (label.lower() in node.name.lower()
+                                or node.name.lower() in label.lower()
+                                or any(w in node.name.lower() for w in label.lower().split())):
+                            node.value = entry["value"]
+                            matched = True
+                            break
+                    if matched:
                         break
     except Exception:
         pass  # Non-critical — best effort

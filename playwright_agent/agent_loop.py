@@ -158,7 +158,7 @@ async def run(
             consecutive_failures += 1
             continue
 
-        # Log Claude's raw response
+        # Log Claude's raw response (DEBUG only)
         log.debug(
             f"Step {step} LLM response | tool={tool_block.name} | "
             f"input={json.dumps(tool_block.input, default=str)[:300]}"
@@ -291,12 +291,13 @@ async def run(
         loop_key = (page.url, action.action)
         loop_counter[loop_key] = loop_counter.get(loop_key, 0) + 1
 
-        # Track consecutive same action type (catches screenshot spam even if hash differs)
-        # Only triggers on 3+ CONSECUTIVE same actions — a different action in between resets it
+        # Track consecutive same action type (catches screenshot/goto/scroll spam)
+        # Excludes type/click — consecutive type calls are normal when filling forms
+        SPAM_ACTIONS = {"screenshot", "goto", "extract", "scroll"}
         if len(history) >= 3:
             last_3_actions = [h.get("action") for h in history[-3:]]
-            if len(set(last_3_actions)) == 1 and last_3_actions[0] != "system_notice":
-                # Same action 3 times in a row — inject hard nudge
+            if (len(set(last_3_actions)) == 1
+                    and last_3_actions[0] in SPAM_ACTIONS):
                 history.append({
                     "step": step,
                     "action": "system_notice",

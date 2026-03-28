@@ -15,7 +15,7 @@
     "fields_filled": "array | null"
   },
 
-  "max_steps": 20,
+  "max_steps": 25,
 
   "required_fields": ["form_submitted"],
   "required_artifacts": ["empty_form"],
