@@ -1,0 +1,66 @@
+{
+  "sample_id": "blame_001",
+  "status": "done",
+  "steps": 8,
+  "extracted": {
+    "file_path": "package.json",
+    "last_modified_date": "Mar 27, 2026",
+    "last_modified_author": "vs-code-engineering[bot]",
+    "last_commit_message": "Update distro commit (main) (#305764)",
+    "within_threshold": true
+  },
+  "artifacts": [
+    {
+      "filename": "01_file_view.png",
+      "sha256": "5a3d4114839d851ce21d20ca41a6d47299df01fd9b3edb6d6ee43092e1f10f97",
+      "source_url": "https://github.com/microsoft/vscode/blob/main/package.json",
+      "timestamp": "2026-03-28T00:40:10.089983Z"
+    },
+    {
+      "filename": "02_file_view.png",
+      "sha256": "fd62f9443c0e149304e73e861e327ddb9a37d70f709d4dcee219a31abad161fe",
+      "source_url": "https://github.com/microsoft/vscode/blob/main/package.json",
+      "timestamp": "2026-03-28T00:40:22.884398Z"
+    },
+    {
+      "filename": "03_blame_view.png",
+      "sha256": "05bd75d56fc76f96133696a9806af87856af50113f1396ee22a8d89164d8ebe7",
+      "source_url": "https://github.com/microsoft/vscode/blame/main/package.json",
+      "timestamp": "2026-03-28T00:40:48.637862Z"
+    },
+    {
+      "filename": "04_blame_view.png",
+      "sha256": "05bd75d56fc76f96133696a9806af87856af50113f1396ee22a8d89164d8ebe7",
+      "source_url": "https://github.com/microsoft/vscode/blame/main/package.json",
+      "timestamp": "2026-03-28T00:40:51.378454Z"
+    },
+    {
+      "filename": "05_blame_view.png",
+      "sha256": "05bd75d56fc76f96133696a9806af87856af50113f1396ee22a8d89164d8ebe7",
+      "source_url": "https://github.com/microsoft/vscode/blame/main/package.json",
+      "timestamp": "2026-03-28T00:40:55.705617Z"
+    },
+    {
+      "filename": "06_blame_view.png",
+      "sha256": "05bd75d56fc76f96133696a9806af87856af50113f1396ee22a8d89164d8ebe7",
+      "source_url": "https://github.com/microsoft/vscode/blame/main/package.json",
+      "timestamp": "2026-03-28T00:40:58.297530Z"
+    }
+  ],
+  "judgment": {
+    "answer": "no",
+    "confidence": 0.85,
+    "reasoning": "The latest commit to package.json is 'Update distro commit (main) (#305764)' by vs-code-engineering[bot] on Mar 27, 2026. This is a routine automated distro/dependency update commit, not a change to business logic or calculations. The file was modified very recently (within the last year), but the nature of the change is a maintenance/dependency update rather than a material change to business logic.",
+    "evidence_refs": [
+      "Update distro commit (main) (#305764)",
+      "Commit 958f822",
+      "vs-code-engineering[bot]",
+      "Mar 27, 2026"
+    ]
+  },
+  "flagged": false,
+  "notes": [],
+  "errors": [],
+  "started_at": "2026-03-28T00:39:49.091888Z",
+  "finished_at": "2026-03-28T00:41:03.754140Z"
+}

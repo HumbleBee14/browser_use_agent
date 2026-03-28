@@ -1,0 +1,55 @@
+{
+  "sample_id": "commit_001",
+  "status": "done",
+  "steps": 5,
+  "extracted": {
+    "commit_sha": "9986a4378e3332af88cb8c4496fbb6b7231fd189",
+    "pr_number": "305569",
+    "pr_creator": "benibenj",
+    "approvers": [
+      "justschen"
+    ],
+    "merger": "benibenj",
+    "checks_passed": 18,
+    "checks_failed": 0,
+    "merged_with_failures": false,
+    "ci_failure_details": null,
+    "jira_url": null
+  },
+  "artifacts": [
+    {
+      "filename": "01_commit_page.png",
+      "sha256": "b788083506b15eb80dd1b7792c5b479515f99e82e80baae863f6779dac9cae75",
+      "source_url": "https://github.com/microsoft/vscode/commit/9986a4378e3332af88cb8c4496fbb6b7231fd189",
+      "timestamp": "2026-03-27T23:53:47.160506Z"
+    },
+    {
+      "filename": "02_commit_page.png",
+      "sha256": "917641ea1d89c8bd3ec66693d1917a9ccfd62401b14d4633c6cefb71367596a1",
+      "source_url": "https://github.com/microsoft/vscode/commit/9986a4378e3332af88cb8c4496fbb6b7231fd189",
+      "timestamp": "2026-03-27T23:54:00.397995Z"
+    },
+    {
+      "filename": "03_pr_page.png",
+      "sha256": "8ae152513900898449c9cf11955bf849ef8822151ae5dd479a31829b1727fcf9",
+      "source_url": "https://github.com/microsoft/vscode/pull/305569",
+      "timestamp": "2026-03-27T23:54:18.747740Z"
+    }
+  ],
+  "judgment": {
+    "answer": "yes",
+    "confidence": 0.95,
+    "reasoning": "PR #305569 was created by benibenj and approved by justschen. All 18/18 checks passed. The PR had a proper review process with Copilot also leaving review comments. The commit was merged after approval with no failing checks.",
+    "evidence_refs": [
+      "element [2]: '18 / 18 checks OK'",
+      "element [21]: 'justschen approved these changes'",
+      "element [30]: 'benibenj' (PR creator)",
+      "element [62]: merge event by benibenj"
+    ]
+  },
+  "flagged": false,
+  "notes": [],
+  "errors": [],
+  "started_at": "2026-03-27T23:53:16.679748Z",
+  "finished_at": "2026-03-27T23:54:24.306284Z"
+}

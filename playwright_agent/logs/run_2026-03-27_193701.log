@@ -1,0 +1,55 @@
+2026-03-27 19:37:01.807 | INFO     |               system | Logging initialized → C:\Users\Humblebee\Documents\GitHub\browser_use_agent\playwright_agent\logs\run_2026-03-27_193701
+2026-03-27 19:37:01.815 | INFO     |               system | Batch started | task=github_profile | samples=3 | concurrency=3 | model=claude-sonnet-4-6
+2026-03-27 19:37:03.013 | INFO     |             torvalds | Worker started
+2026-03-27 19:37:03.049 | INFO     |           gvanrossum | Worker started
+2026-03-27 19:37:03.078 | INFO     |                  DHH | Worker started
+2026-03-27 19:37:03.887 | INFO     |             torvalds | Agent loop started | url=https://github.com/torvalds | max_steps=12
+2026-03-27 19:37:04.545 | INFO     |           gvanrossum | Agent loop started | url=https://github.com/gvanrossum | max_steps=12
+2026-03-27 19:37:04.545 | INFO     |                  DHH | Agent loop started | url=https://github.com/dhh | max_steps=12
+2026-03-27 19:37:13.220 | ERROR    |             torvalds | Initial navigation failed: Navigation error: Page.goto: net::ERR_NETWORK_CHANGED at https://github.com/torvalds
+Call log:
+  - navigating to "https://github.com/torvalds", waiting until "domcontentloaded"
+
+2026-03-27 19:37:13.228 | ERROR    |           gvanrossum | Initial navigation failed: Navigation error: Page.goto: net::ERR_NETWORK_CHANGED at https://github.com/gvanrossum
+Call log:
+  - navigating to "https://github.com/gvanrossum", waiting until "domcontentloaded"
+
+2026-03-27 19:37:13.289 | INFO     |             torvalds | Worker finished
+2026-03-27 19:37:13.303 | INFO     |           gvanrossum | Worker finished
+2026-03-27 19:37:20.336 | DEBUG    |                  DHH | Step 1 | DOM confidence=0.74 | nodes=101
+2026-03-27 19:37:20.337 | INFO     |                  DHH | Step 1 LLM input | dom_nodes=101 | confidence=0.74 | history_items=1 | vision=no
+2026-03-27 19:37:20.337 | DEBUG    |                  DHH | Step 1 system_prompt | You are a browser agent extracting public GitHub profile data. Navigate the page, take a full-page screenshot, and extract all visible fields. Set missing fields to null. Never guess. When all fields are extracted and at least one screenshot is taken, call done with the extracted data.
+2026-03-27 19:37:20.338 | DEBUG    |                  DHH | Step 1 page_state | URL: https://github.com/dhh
+Title: dhh (David Heinemeier Hansson) · GitHub
+
+[0]  [link]  "24.6k followers"  → https://github.com/dhh?tab=followers
+[1]  [link]  "0 following"  → https://github.com/dhh?tab=following
+[2]  [heading]  "Popular repositories Loading"  (h2)
+[3]  [button]  "Created 309 commits in 17 repositories"
+[4]  [button]  "Opened 7 other pull requests in 3 repositories"  (expanded=True)
+[5]  [button]  "Reviewed 3 pull requests in 2 repositories"  (expanded=True)
+[6]  [link]  "Skip 
+2026-03-27 19:37:20.338 | DEBUG    |                  DHH | Step 1 history | [{"step": 0, "action": "goto", "url": "https://github.com/dhh", "result": "Navigated to https://github.com/dhh"}]
+2026-03-27 19:37:22.460 | DEBUG    |                  DHH | Step 1 LLM response | tool=screenshot | input={"label": "profile"}
+2026-03-27 19:37:23.390 | INFO     |                  DHH | Step 1 | screenshot(profile) → OK: Screenshot saved: 01_profile.png (sha256: a976cc1cd902...)
+2026-03-27 19:37:23.390 | DEBUG    |                  DHH | Step 1 detail | action={'action': 'screenshot', 'label': 'profile'} | thinking= | dom_nodes=101 | confidence=0.74
+2026-03-27 19:37:23.740 | DEBUG    |                  DHH | Step 2 | DOM confidence=0.74 | nodes=101
+2026-03-27 19:37:23.740 | INFO     |                  DHH | Step 2 LLM input | dom_nodes=101 | confidence=0.74 | history_items=2 | vision=no
+2026-03-27 19:37:23.740 | DEBUG    |                  DHH | Step 2 system_prompt | You are a browser agent extracting public GitHub profile data. Navigate the page, take a full-page screenshot, and extract all visible fields. Set missing fields to null. Never guess. When all fields are extracted and at least one screenshot is taken, call done with the extracted data.
+2026-03-27 19:37:23.741 | DEBUG    |                  DHH | Step 2 page_state | URL: https://github.com/dhh
+Title: dhh (David Heinemeier Hansson) · GitHub
+
+[0]  [link]  "24.6k followers"  → https://github.com/dhh?tab=followers
+[1]  [link]  "0 following"  → https://github.com/dhh?tab=following
+[2]  [heading]  "Popular repositories Loading"  (h2)
+[3]  [button]  "Created 309 commits in 17 repositories"
+[4]  [button]  "Opened 7 other pull requests in 3 repositories"  (expanded=True)
+[5]  [button]  "Reviewed 3 pull requests in 2 repositories"  (expanded=True)
+[6]  [link]  "Skip 
+2026-03-27 19:37:23.741 | DEBUG    |                  DHH | Step 2 history | [{"step": 0, "action": "goto", "url": "https://github.com/dhh", "result": "Navigated to https://github.com/dhh"}, {"step": 1, "action": "screenshot", "params": {"label": "profile"}, "result": "Screenshot saved: 01_profile.png (sha256: a976cc1cd902...)"}]
+2026-03-27 19:37:27.769 | DEBUG    |                  DHH | Step 2 LLM response | tool=done | input={"extracted": {"display_name": "David Heinemeier Hansson", "bio": null, "company": null, "location": null, "followers": "24.6k", "following": "0", "pinned_repos": ["asset-hosting-with-minimum-ssl", "conductor", "textmate-rails-bundle", "hyprland-wiki"]}}
+2026-03-27 19:37:27.770 | INFO     |                  DHH | Step 2 | done() → OK: Action: done
+2026-03-27 19:37:27.770 | DEBUG    |                  DHH | Step 2 detail | action={'action': 'done', 'extracted': {'display_name': 'David Heinemeier Hansson', 'bio': None, 'company': None, 'location': None, 'followers': '24.6k', 'following': '0', 'pinned_repos': ['asset-hosting-with-minimum-ssl', 'conductor', 'textmate-rails-bundle', 'hyprland-wiki']}} | thinking= | dom_nodes=101 | confidence=0.74
+2026-03-27 19:37:27.770 | INFO     |                  DHH | Completed | status=done | steps=2 | fields=7
+2026-03-27 19:37:27.806 | INFO     |                  DHH | Worker finished
+2026-03-27 19:37:28.292 | INFO     |               system | Batch complete | samples=3 | duration=26.5s | csv=C:\Users\Humblebee\Documents\GitHub\browser_use_agent\playwright_agent\evidence\run_2026-03-27_193701\combined.csv

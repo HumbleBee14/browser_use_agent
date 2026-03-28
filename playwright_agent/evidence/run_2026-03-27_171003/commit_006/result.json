@@ -1,0 +1,39 @@
+{
+  "sample_id": "commit_006",
+  "status": "done",
+  "steps": 2,
+  "extracted": {
+    "commit_sha": "c25b1513f21aef0e12cb25e4de4e2b13b8db5abb",
+    "pr_number": null,
+    "pr_creator": null,
+    "approvers": null,
+    "merger": null,
+    "checks_passed": null,
+    "checks_failed": null,
+    "merged_with_failures": null,
+    "ci_failure_details": null,
+    "jira_url": null
+  },
+  "artifacts": [
+    {
+      "filename": "01_commit_page.png",
+      "sha256": "8943808f3138be49d358ffa0ca49e42c6807e9846a640ef494ebf28bf2ffe8dd",
+      "source_url": "https://github.com/microsoft/vscode/commit/c25b1513f21aef0e12cb25e4de4e2b13b8db5abb",
+      "timestamp": "2026-03-28T00:11:36.332497Z"
+    }
+  ],
+  "judgment": {
+    "answer": "inconclusive",
+    "confidence": 0.1,
+    "reasoning": "The commit page returned a 404 error on GitHub, meaning the commit URL (https://github.com/microsoft/vscode/commit/c25b1513f21aef0e12cb25e4de4e2b13b8db5abb) does not exist or is not accessible. No PR, review, approval, or CI check data could be retrieved. It is impossible to determine whether this commit was properly reviewed.",
+    "evidence_refs": [
+      "404 page returned by GitHub for the commit URL",
+      "commit_sha extracted from URL only"
+    ]
+  },
+  "flagged": false,
+  "notes": [],
+  "errors": [],
+  "started_at": "2026-03-28T00:11:17.200359Z",
+  "finished_at": "2026-03-28T00:11:52.097852Z"
+}

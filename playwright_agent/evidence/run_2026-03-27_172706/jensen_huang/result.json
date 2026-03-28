@@ -1,0 +1,52 @@
+{
+  "sample_id": "jensen_huang",
+  "status": "failed",
+  "steps": 12,
+  "extracted": {},
+  "artifacts": [
+    {
+      "filename": "01_profile_top.png",
+      "sha256": "8b7e5fb6af623948efa9a5b5081ad8949ab996b027f3fd85229df9fce5f57779",
+      "source_url": "https://www.linkedin.com/in/jenhsunhuang/",
+      "timestamp": "2026-03-28T00:27:43.518263Z"
+    },
+    {
+      "filename": "02_profile_top.png",
+      "sha256": "e11fb5766b0a2c3fdd58b6b593a35b5e8098003be31b62d2a6e0b5950d655505",
+      "source_url": "https://www.linkedin.com/in/jenhsunhuang/",
+      "timestamp": "2026-03-28T00:27:45.129444Z"
+    },
+    {
+      "filename": "03_profile_top.png",
+      "sha256": "e11fb5766b0a2c3fdd58b6b593a35b5e8098003be31b62d2a6e0b5950d655505",
+      "source_url": "https://www.linkedin.com/in/jenhsunhuang/",
+      "timestamp": "2026-03-28T00:27:46.763903Z"
+    },
+    {
+      "filename": "04_profile_top.png",
+      "sha256": "cc9a78e65fbb4a6409f3d9837f36b3125ee0ef553f04516c0af0470e6581d30d",
+      "source_url": "https://www.linkedin.com/in/jenhsunhuang/",
+      "timestamp": "2026-03-28T00:27:58.995408Z"
+    },
+    {
+      "filename": "05_profile_top.png",
+      "sha256": "054457545f583d0c5a81be4803a9de936cd8962b193ec0d337655d61b70e2efb",
+      "source_url": "https://www.linkedin.com/in/jenhsunhuang/",
+      "timestamp": "2026-03-28T00:28:09.494712Z"
+    },
+    {
+      "filename": "06_profile_top.png",
+      "sha256": "054457545f583d0c5a81be4803a9de936cd8962b193ec0d337655d61b70e2efb",
+      "source_url": "https://www.linkedin.com/in/jenhsunhuang/",
+      "timestamp": "2026-03-28T00:28:11.362382Z"
+    }
+  ],
+  "judgment": null,
+  "flagged": true,
+  "notes": [],
+  "errors": [
+    "Exhausted 12 steps without completing"
+  ],
+  "started_at": "2026-03-28T00:27:07.642692Z",
+  "finished_at": "2026-03-28T00:28:14.713376Z"
+}

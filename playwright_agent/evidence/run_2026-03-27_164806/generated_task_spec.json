@@ -1,0 +1,36 @@
+{
+  "task_id": "github_profile_torvalds",
+  "phase": "execution",
+  "start_url": "",
+  "system_prompt": "You are a browser agent. Navigate to https://github.com/torvalds. Read the data from the page state text provided to you. Take ONE screenshot labeled 'profile' for evidence. Extract the following from the page state: display name, location, followers count, following count, and all pinned repository names. Do NOT click anything or scroll unnecessarily. Call done as soon as you have the data. Set missing fields to null.",
+  "goal": "Extract display_name, location, followers_count, following_count, and pinned_repos from the GitHub profile of torvalds.",
+  "keywords": [
+    "followers",
+    "following",
+    "pinned",
+    "location",
+    "repositories",
+    "display name"
+  ],
+  "output_schema": {
+    "display_name": "string",
+    "location": "string | null",
+    "followers_count": "string | null",
+    "following_count": "string | null",
+    "pinned_repos": "array | null"
+  },
+  "required_fields": [
+    "display_name"
+  ],
+  "required_artifacts": [
+    "profile"
+  ],
+  "max_steps": 10,
+  "judgment_required": false,
+  "judgment_question": null,
+  "judgment_output_schema": null,
+  "pagination": false,
+  "stop_condition": "",
+  "input_schema": {},
+  "auth_profile": null
+}

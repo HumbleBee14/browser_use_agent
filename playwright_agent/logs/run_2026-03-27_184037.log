@@ -1,0 +1,813 @@
+2026-03-27 18:40:37.739 | INFO     |               system | Logging initialized → C:\Users\Humblebee\Documents\GitHub\browser_use_agent\playwright_agent\logs\run_2026-03-27_184037
+2026-03-27 18:40:37.748 | INFO     |               system | Batch started | task=form_fill_demo | samples=1 | concurrency=5 | model=claude-sonnet-4-6
+2026-03-27 18:40:39.510 | INFO     |             form_001 | Worker started
+2026-03-27 18:40:40.342 | INFO     |             form_001 | Agent loop started | url=https://httpbin.org/forms/post | max_steps=25
+2026-03-27 18:40:44.196 | DEBUG    |             form_001 | Step 1 | DOM confidence=0.82 | nodes=13
+2026-03-27 18:40:44.197 | INFO     |             form_001 | Step 1 LLM input | dom_nodes=13 | confidence=0.82 | history_items=1 | vision=no
+2026-03-27 18:40:44.197 | DEBUG    |             form_001 | Step 1 system_prompt | You are a browser agent filling out a web form.
+
+HOW TO INTERACT WITH FORM ELEMENTS:
+- Text inputs: use type(selector, text)
+- Radio buttons: use click(selector) to select one
+- Checkboxes: use click(selector) to check/uncheck
+- Submit button: use click(selector)
+
+STEPS:
+1. Take ONE screenshot label
+2026-03-27 18:40:44.198 | DEBUG    |             form_001 | Step 1 page_state | URL: https://httpbin.org/forms/post
+Title: 
+
+[0]  [textbox]  "Customer name:"
+[1]  [textbox]  "Telephone:"
+[2]  [textbox]  "Preferred delivery time:"
+[3]  [textbox]  "Delivery instructions:"
+[4]  [button]  "Submit order"
+[5]  [textbox]  "E-mail address:"
+[6]  [radio]  "Small"
+[7]  [radio]  "Medium"
+[8]  [radio]  "Large"
+[9]  [checkbox]  "Bacon"
+[10]  [checkbox]  "Extra Cheese"
+[11]  [checkbox]  "Onion"
+[12]  [checkbox]  "Mushroom"
+2026-03-27 18:40:44.198 | DEBUG    |             form_001 | Step 1 history | [{"step": 0, "action": "goto", "url": "https://httpbin.org/forms/post", "result": "Navigated to https://httpbin.org/forms/post"}]
+2026-03-27 18:40:47.770 | DEBUG    |             form_001 | Step 1 LLM response | tool=screenshot | input={"label": "empty_form"}
+2026-03-27 18:40:48.316 | INFO     |             form_001 | Step 1 | screenshot(empty_form) → OK: Screenshot saved: 01_empty_form.png (sha256: 354a51b51c0c...)
+2026-03-27 18:40:48.317 | DEBUG    |             form_001 | Step 1 detail | action={'action': 'screenshot', 'label': 'empty_form'} | thinking= | dom_nodes=13 | confidence=0.82
+2026-03-27 18:40:48.348 | DEBUG    |             form_001 | Step 2 | DOM confidence=0.82 | nodes=13
+2026-03-27 18:40:48.348 | INFO     |             form_001 | Step 2 LLM input | dom_nodes=13 | confidence=0.82 | history_items=2 | vision=no
+2026-03-27 18:40:48.348 | DEBUG    |             form_001 | Step 2 system_prompt | You are a browser agent filling out a web form.
+
+HOW TO INTERACT WITH FORM ELEMENTS:
+- Text inputs: use type(selector, text)
+- Radio buttons: use click(selector) to select one
+- Checkboxes: use click(selector) to check/uncheck
+- Submit button: use click(selector)
+
+STEPS:
+1. Take ONE screenshot label
+2026-03-27 18:40:48.348 | DEBUG    |             form_001 | Step 2 page_state | URL: https://httpbin.org/forms/post
+Title: 
+
+[0]  [textbox]  "Customer name:"
+[1]  [textbox]  "Telephone:"
+[2]  [textbox]  "Preferred delivery time:"
+[3]  [textbox]  "Delivery instructions:"
+[4]  [button]  "Submit order"
+[5]  [textbox]  "E-mail address:"
+[6]  [radio]  "Small"
+[7]  [radio]  "Medium"
+[8]  [radio]  "Large"
+[9]  [checkbox]  "Bacon"
+[10]  [checkbox]  "Extra Cheese"
+[11]  [checkbox]  "Onion"
+[12]  [checkbox]  "Mushroom"
+2026-03-27 18:40:48.349 | DEBUG    |             form_001 | Step 2 history | [{"step": 0, "action": "goto", "url": "https://httpbin.org/forms/post", "result": "Navigated to https://httpbin.org/forms/post"}, {"step": 1, "action": "screenshot", "params": {"label": "empty_form"}, "result": "Screenshot saved: 01_empty_form.png (sha256: 354a51b51c0c...)"}]
+2026-03-27 18:40:50.402 | DEBUG    |             form_001 | Step 2 LLM response | tool=type | input={"selector": "0", "text": "John Smith"}
+2026-03-27 18:40:50.428 | INFO     |             form_001 | Step 2 | type(0) → OK: Typed 'John Smith' into '0' (via index)
+2026-03-27 18:40:50.428 | DEBUG    |             form_001 | Step 2 detail | action={'action': 'type', 'selector': '0', 'text': 'John Smith'} | thinking= | dom_nodes=13 | confidence=0.82
+2026-03-27 18:40:50.457 | DEBUG    |             form_001 | Step 3 | DOM confidence=0.82 | nodes=13
+2026-03-27 18:40:50.457 | INFO     |             form_001 | Step 3 LLM input | dom_nodes=13 | confidence=0.82 | history_items=3 | vision=no
+2026-03-27 18:40:50.457 | DEBUG    |             form_001 | Step 3 system_prompt | You are a browser agent filling out a web form.
+
+HOW TO INTERACT WITH FORM ELEMENTS:
+- Text inputs: use type(selector, text)
+- Radio buttons: use click(selector) to select one
+- Checkboxes: use click(selector) to check/uncheck
+- Submit button: use click(selector)
+
+STEPS:
+1. Take ONE screenshot label
+2026-03-27 18:40:50.457 | DEBUG    |             form_001 | Step 3 page_state | URL: https://httpbin.org/forms/post
+Title: 
+
+[0]  [textbox]  "Customer name:"
+[1]  [textbox]  "Telephone:"
+[2]  [textbox]  "Preferred delivery time:"
+[3]  [textbox]  "Delivery instructions:"
+[4]  [button]  "Submit order"
+[5]  [textbox]  "E-mail address:"
+[6]  [radio]  "Small"
+[7]  [radio]  "Medium"
+[8]  [radio]  "Large"
+[9]  [checkbox]  "Bacon"
+[10]  [checkbox]  "Extra Cheese"
+[11]  [checkbox]  "Onion"
+[12]  [checkbox]  "Mushroom"
+2026-03-27 18:40:50.458 | DEBUG    |             form_001 | Step 3 history | [{"step": 0, "action": "goto", "url": "https://httpbin.org/forms/post", "result": "Navigated to https://httpbin.org/forms/post"}, {"step": 1, "action": "screenshot", "params": {"label": "empty_form"}, "result": "Screenshot saved: 01_empty_form.png (sha256: 354a51b51c0c...)"}, {"step": 2, "action": "type", "params": {"selector": "0", "text": "John Smith"}, "result": "Typed 'John Smith' into '0' (via index)"}]
+2026-03-27 18:40:53.280 | DEBUG    |             form_001 | Step 3 LLM response | tool=type | input={"selector": "1", "text": "555-0123"}
+2026-03-27 18:40:53.310 | INFO     |             form_001 | Step 3 | type(1) → OK: Typed '555-0123' into '1' (via index)
+2026-03-27 18:40:53.310 | DEBUG    |             form_001 | Step 3 detail | action={'action': 'type', 'selector': '1', 'text': '555-0123'} | thinking= | dom_nodes=13 | confidence=0.82
+2026-03-27 18:40:53.347 | DEBUG    |             form_001 | Step 4 | DOM confidence=0.82 | nodes=13
+2026-03-27 18:40:53.347 | INFO     |             form_001 | Step 4 LLM input | dom_nodes=13 | confidence=0.82 | history_items=4 | vision=no
+2026-03-27 18:40:53.348 | DEBUG    |             form_001 | Step 4 system_prompt | You are a browser agent filling out a web form.
+
+HOW TO INTERACT WITH FORM ELEMENTS:
+- Text inputs: use type(selector, text)
+- Radio buttons: use click(selector) to select one
+- Checkboxes: use click(selector) to check/uncheck
+- Submit button: use click(selector)
+
+STEPS:
+1. Take ONE screenshot label
+2026-03-27 18:40:53.348 | DEBUG    |             form_001 | Step 4 page_state | URL: https://httpbin.org/forms/post
+Title: 
+
+[0]  [textbox]  "Customer name:"
+[1]  [textbox]  "Telephone:"
+[2]  [textbox]  "Preferred delivery time:"
+[3]  [textbox]  "Delivery instructions:"
+[4]  [button]  "Submit order"
+[5]  [textbox]  "E-mail address:"
+[6]  [radio]  "Small"
+[7]  [radio]  "Medium"
+[8]  [radio]  "Large"
+[9]  [checkbox]  "Bacon"
+[10]  [checkbox]  "Extra Cheese"
+[11]  [checkbox]  "Onion"
+[12]  [checkbox]  "Mushroom"
+2026-03-27 18:40:53.348 | DEBUG    |             form_001 | Step 4 history | [{"step": 0, "action": "goto", "url": "https://httpbin.org/forms/post", "result": "Navigated to https://httpbin.org/forms/post"}, {"step": 1, "action": "screenshot", "params": {"label": "empty_form"}, "result": "Screenshot saved: 01_empty_form.png (sha256: 354a51b51c0c...)"}, {"step": 2, "action": "type", "params": {"selector": "0", "text": "John Smith"}, "result": "Typed 'John Smith' into '0' (via index)"}, {"step": 3, "action": "type", "params": {"selector": "1", "text": "555-0123"}, "result":
+2026-03-27 18:40:55.393 | DEBUG    |             form_001 | Step 4 LLM response | tool=type | input={"selector": "2", "text": "18:00"}
+2026-03-27 18:40:55.409 | INFO     |             form_001 | Step 4 | type(2) → OK: Typed '18:00' into '2' (via index)
+2026-03-27 18:40:55.409 | DEBUG    |             form_001 | Step 4 detail | action={'action': 'type', 'selector': '2', 'text': '18:00'} | thinking= | dom_nodes=13 | confidence=0.82
+2026-03-27 18:40:55.433 | DEBUG    |             form_001 | Step 5 | DOM confidence=0.82 | nodes=13
+2026-03-27 18:40:55.433 | INFO     |             form_001 | Step 5 LLM input | dom_nodes=13 | confidence=0.82 | history_items=5 | vision=no
+2026-03-27 18:40:55.433 | DEBUG    |             form_001 | Step 5 system_prompt | You are a browser agent filling out a web form.
+
+HOW TO INTERACT WITH FORM ELEMENTS:
+- Text inputs: use type(selector, text)
+- Radio buttons: use click(selector) to select one
+- Checkboxes: use click(selector) to check/uncheck
+- Submit button: use click(selector)
+
+STEPS:
+1. Take ONE screenshot label
+2026-03-27 18:40:55.434 | DEBUG    |             form_001 | Step 5 page_state | URL: https://httpbin.org/forms/post
+Title: 
+
+[0]  [textbox]  "Customer name:"
+[1]  [textbox]  "Telephone:"
+[2]  [textbox]  "Preferred delivery time:"  (value="18:00")
+[3]  [textbox]  "Delivery instructions:"  (value="18:00")
+[4]  [button]  "Submit order"
+[5]  [textbox]  "E-mail address:"
+[6]  [radio]  "Small"
+[7]  [radio]  "Medium"
+[8]  [radio]  "Large"
+[9]  [checkbox]  "Bacon"
+[10]  [checkbox]  "Extra Cheese"
+[11]  [checkbox]  "Onion"
+[12]  [checkbox]  "Mushroom"
+2026-03-27 18:40:55.434 | DEBUG    |             form_001 | Step 5 history | [{"step": 0, "action": "goto", "url": "https://httpbin.org/forms/post", "result": "Navigated to https://httpbin.org/forms/post"}, {"step": 1, "action": "screenshot", "params": {"label": "empty_form"}, "result": "Screenshot saved: 01_empty_form.png (sha256: 354a51b51c0c...)"}, {"step": 2, "action": "type", "params": {"selector": "0", "text": "John Smith"}, "result": "Typed 'John Smith' into '0' (via index)"}, {"step": 3, "action": "type", "params": {"selector": "1", "text": "555-0123"}, "result":
+2026-03-27 18:40:58.231 | DEBUG    |             form_001 | Step 5 LLM response | tool=type | input={"selector": "5", "text": "john@example.com"}
+2026-03-27 18:40:58.248 | INFO     |             form_001 | Step 5 | type(5) → OK: Typed 'john@example.com' into '5' (via index)
+2026-03-27 18:40:58.249 | DEBUG    |             form_001 | Step 5 detail | action={'action': 'type', 'selector': '5', 'text': 'john@example.com'} | thinking= | dom_nodes=13 | confidence=0.82
+2026-03-27 18:40:58.271 | DEBUG    |             form_001 | Step 6 | DOM confidence=0.82 | nodes=13
+2026-03-27 18:40:58.271 | INFO     |             form_001 | Step 6 LLM input | dom_nodes=13 | confidence=0.82 | history_items=5 | vision=no
+2026-03-27 18:40:58.272 | DEBUG    |             form_001 | Step 6 system_prompt | You are a browser agent filling out a web form.
+
+HOW TO INTERACT WITH FORM ELEMENTS:
+- Text inputs: use type(selector, text)
+- Radio buttons: use click(selector) to select one
+- Checkboxes: use click(selector) to check/uncheck
+- Submit button: use click(selector)
+
+STEPS:
+1. Take ONE screenshot label
+2026-03-27 18:40:58.272 | DEBUG    |             form_001 | Step 6 page_state | URL: https://httpbin.org/forms/post
+Title: 
+
+[0]  [textbox]  "Customer name:"
+[1]  [textbox]  "Telephone:"
+[2]  [textbox]  "Preferred delivery time:"  (value="18:00")
+[3]  [textbox]  "Delivery instructions:"  (value="18:00")
+[4]  [button]  "Submit order"
+[5]  [textbox]  "E-mail address:"
+[6]  [radio]  "Small"
+[7]  [radio]  "Medium"
+[8]  [radio]  "Large"
+[9]  [checkbox]  "Bacon"
+[10]  [checkbox]  "Extra Cheese"
+[11]  [checkbox]  "Onion"
+[12]  [checkbox]  "Mushroom"
+2026-03-27 18:40:58.272 | DEBUG    |             form_001 | Step 6 history | [{"step": 1, "action": "screenshot", "params": {"label": "empty_form"}, "result": "Screenshot saved: 01_empty_form.png (sha256: 354a51b51c0c...)"}, {"step": 2, "action": "type", "params": {"selector": "0", "text": "John Smith"}, "result": "Typed 'John Smith' into '0' (via index)"}, {"step": 3, "action": "type", "params": {"selector": "1", "text": "555-0123"}, "result": "Typed '555-0123' into '1' (via index)"}, {"step": 4, "action": "type", "params": {"selector": "2", "text": "18:00"}, "result": 
+2026-03-27 18:41:00.701 | DEBUG    |             form_001 | Step 6 LLM response | tool=type | input={"selector": "3", "text": "Test order"}
+2026-03-27 18:41:00.717 | INFO     |             form_001 | Step 6 | type(3) → OK: Typed 'Test order' into '3' (via index)
+2026-03-27 18:41:00.718 | DEBUG    |             form_001 | Step 6 detail | action={'action': 'type', 'selector': '3', 'text': 'Test order'} | thinking= | dom_nodes=13 | confidence=0.82
+2026-03-27 18:41:00.741 | DEBUG    |             form_001 | Step 7 | DOM confidence=0.82 | nodes=13
+2026-03-27 18:41:00.741 | INFO     |             form_001 | Step 7 LLM input | dom_nodes=13 | confidence=0.82 | history_items=5 | vision=no
+2026-03-27 18:41:00.741 | DEBUG    |             form_001 | Step 7 system_prompt | You are a browser agent filling out a web form.
+
+HOW TO INTERACT WITH FORM ELEMENTS:
+- Text inputs: use type(selector, text)
+- Radio buttons: use click(selector) to select one
+- Checkboxes: use click(selector) to check/uncheck
+- Submit button: use click(selector)
+
+STEPS:
+1. Take ONE screenshot label
+2026-03-27 18:41:00.741 | DEBUG    |             form_001 | Step 7 page_state | URL: https://httpbin.org/forms/post
+Title: 
+
+[0]  [textbox]  "Customer name:"
+[1]  [textbox]  "Telephone:"
+[2]  [textbox]  "Preferred delivery time:"  (value="18:00")
+[3]  [textbox]  "Delivery instructions:"  (value="18:00")
+[4]  [button]  "Submit order"
+[5]  [textbox]  "E-mail address:"
+[6]  [radio]  "Small"
+[7]  [radio]  "Medium"
+[8]  [radio]  "Large"
+[9]  [checkbox]  "Bacon"
+[10]  [checkbox]  "Extra Cheese"
+[11]  [checkbox]  "Onion"
+[12]  [checkbox]  "Mushroom"
+2026-03-27 18:41:00.742 | DEBUG    |             form_001 | Step 7 history | [{"step": 2, "action": "type", "params": {"selector": "0", "text": "John Smith"}, "result": "Typed 'John Smith' into '0' (via index)"}, {"step": 3, "action": "type", "params": {"selector": "1", "text": "555-0123"}, "result": "Typed '555-0123' into '1' (via index)"}, {"step": 4, "action": "type", "params": {"selector": "2", "text": "18:00"}, "result": "Typed '18:00' into '2' (via index)"}, {"step": 5, "action": "type", "params": {"selector": "5", "text": "john@example.com"}, "result": "Typed 'joh
+2026-03-27 18:41:02.591 | DEBUG    |             form_001 | Step 7 LLM response | tool=screenshot | input={"label": "empty_form"}
+2026-03-27 18:41:02.711 | INFO     |             form_001 | Step 7 | screenshot(empty_form) → OK: Screenshot saved: 02_empty_form.png (sha256: a8f8f08e5ecd...)
+2026-03-27 18:41:02.711 | DEBUG    |             form_001 | Step 7 detail | action={'action': 'screenshot', 'label': 'empty_form'} | thinking= | dom_nodes=13 | confidence=0.82
+2026-03-27 18:41:02.736 | DEBUG    |             form_001 | Step 8 | DOM confidence=0.82 | nodes=13
+2026-03-27 18:41:02.737 | INFO     |             form_001 | Step 8 LLM input | dom_nodes=13 | confidence=0.82 | history_items=5 | vision=no
+2026-03-27 18:41:02.737 | DEBUG    |             form_001 | Step 8 system_prompt | You are a browser agent filling out a web form.
+
+HOW TO INTERACT WITH FORM ELEMENTS:
+- Text inputs: use type(selector, text)
+- Radio buttons: use click(selector) to select one
+- Checkboxes: use click(selector) to check/uncheck
+- Submit button: use click(selector)
+
+STEPS:
+1. Take ONE screenshot label
+2026-03-27 18:41:02.737 | DEBUG    |             form_001 | Step 8 page_state | URL: https://httpbin.org/forms/post
+Title: 
+
+[0]  [textbox]  "Customer name:"
+[1]  [textbox]  "Telephone:"
+[2]  [textbox]  "Preferred delivery time:"  (value="18:00")
+[3]  [textbox]  "Delivery instructions:"  (value="18:00")
+[4]  [button]  "Submit order"
+[5]  [textbox]  "E-mail address:"
+[6]  [radio]  "Small"
+[7]  [radio]  "Medium"
+[8]  [radio]  "Large"
+[9]  [checkbox]  "Bacon"
+[10]  [checkbox]  "Extra Cheese"
+[11]  [checkbox]  "Onion"
+[12]  [checkbox]  "Mushroom"
+2026-03-27 18:41:02.737 | DEBUG    |             form_001 | Step 8 history | [{"step": 3, "action": "type", "params": {"selector": "1", "text": "555-0123"}, "result": "Typed '555-0123' into '1' (via index)"}, {"step": 4, "action": "type", "params": {"selector": "2", "text": "18:00"}, "result": "Typed '18:00' into '2' (via index)"}, {"step": 5, "action": "type", "params": {"selector": "5", "text": "john@example.com"}, "result": "Typed 'john@example.com' into '5' (via index)"}, {"step": 6, "action": "type", "params": {"selector": "3", "text": "Test order"}, "result": "Type
+2026-03-27 18:41:04.420 | DEBUG    |             form_001 | Step 8 LLM response | tool=type | input={"selector": "0", "text": "John Smith"}
+2026-03-27 18:41:04.450 | INFO     |             form_001 | Step 8 | type(0) → OK: Typed 'John Smith' into '0' (via index)
+2026-03-27 18:41:04.451 | DEBUG    |             form_001 | Step 8 detail | action={'action': 'type', 'selector': '0', 'text': 'John Smith'} | thinking= | dom_nodes=13 | confidence=0.82
+2026-03-27 18:41:04.492 | DEBUG    |             form_001 | Step 9 | DOM confidence=0.82 | nodes=13
+2026-03-27 18:41:04.493 | INFO     |             form_001 | Step 9 LLM input | dom_nodes=13 | confidence=0.82 | history_items=5 | vision=no
+2026-03-27 18:41:04.493 | DEBUG    |             form_001 | Step 9 system_prompt | You are a browser agent filling out a web form.
+
+HOW TO INTERACT WITH FORM ELEMENTS:
+- Text inputs: use type(selector, text)
+- Radio buttons: use click(selector) to select one
+- Checkboxes: use click(selector) to check/uncheck
+- Submit button: use click(selector)
+
+STEPS:
+1. Take ONE screenshot label
+2026-03-27 18:41:04.493 | DEBUG    |             form_001 | Step 9 page_state | URL: https://httpbin.org/forms/post
+Title: 
+
+[0]  [textbox]  "Customer name:"
+[1]  [textbox]  "Telephone:"
+[2]  [textbox]  "Preferred delivery time:"  (value="18:00")
+[3]  [textbox]  "Delivery instructions:"  (value="18:00")
+[4]  [button]  "Submit order"
+[5]  [textbox]  "E-mail address:"
+[6]  [radio]  "Small"
+[7]  [radio]  "Medium"
+[8]  [radio]  "Large"
+[9]  [checkbox]  "Bacon"
+[10]  [checkbox]  "Extra Cheese"
+[11]  [checkbox]  "Onion"
+[12]  [checkbox]  "Mushroom"
+2026-03-27 18:41:04.494 | DEBUG    |             form_001 | Step 9 history | [{"step": 4, "action": "type", "params": {"selector": "2", "text": "18:00"}, "result": "Typed '18:00' into '2' (via index)"}, {"step": 5, "action": "type", "params": {"selector": "5", "text": "john@example.com"}, "result": "Typed 'john@example.com' into '5' (via index)"}, {"step": 6, "action": "type", "params": {"selector": "3", "text": "Test order"}, "result": "Typed 'Test order' into '3' (via index)"}, {"step": 7, "action": "screenshot", "params": {"label": "empty_form"}, "result": "Screenshot
+2026-03-27 18:41:06.156 | DEBUG    |             form_001 | Step 9 LLM response | tool=type | input={"selector": "1", "text": "555-0123"}
+2026-03-27 18:41:06.178 | INFO     |             form_001 | Step 9 | type(1) → OK: Typed '555-0123' into '1' (via index)
+2026-03-27 18:41:06.179 | DEBUG    |             form_001 | Step 9 detail | action={'action': 'type', 'selector': '1', 'text': '555-0123'} | thinking= | dom_nodes=13 | confidence=0.82
+2026-03-27 18:41:06.207 | DEBUG    |             form_001 | Step 10 | DOM confidence=0.82 | nodes=13
+2026-03-27 18:41:06.207 | INFO     |             form_001 | Step 10 LLM input | dom_nodes=13 | confidence=0.82 | history_items=5 | vision=no
+2026-03-27 18:41:06.208 | DEBUG    |             form_001 | Step 10 system_prompt | You are a browser agent filling out a web form.
+
+HOW TO INTERACT WITH FORM ELEMENTS:
+- Text inputs: use type(selector, text)
+- Radio buttons: use click(selector) to select one
+- Checkboxes: use click(selector) to check/uncheck
+- Submit button: use click(selector)
+
+STEPS:
+1. Take ONE screenshot label
+2026-03-27 18:41:06.208 | DEBUG    |             form_001 | Step 10 page_state | URL: https://httpbin.org/forms/post
+Title: 
+
+[0]  [textbox]  "Customer name:"
+[1]  [textbox]  "Telephone:"
+[2]  [textbox]  "Preferred delivery time:"  (value="18:00")
+[3]  [textbox]  "Delivery instructions:"  (value="18:00")
+[4]  [button]  "Submit order"
+[5]  [textbox]  "E-mail address:"
+[6]  [radio]  "Small"
+[7]  [radio]  "Medium"
+[8]  [radio]  "Large"
+[9]  [checkbox]  "Bacon"
+[10]  [checkbox]  "Extra Cheese"
+[11]  [checkbox]  "Onion"
+[12]  [checkbox]  "Mushroom"
+2026-03-27 18:41:06.209 | DEBUG    |             form_001 | Step 10 history | [{"step": 5, "action": "type", "params": {"selector": "5", "text": "john@example.com"}, "result": "Typed 'john@example.com' into '5' (via index)"}, {"step": 6, "action": "type", "params": {"selector": "3", "text": "Test order"}, "result": "Typed 'Test order' into '3' (via index)"}, {"step": 7, "action": "screenshot", "params": {"label": "empty_form"}, "result": "Screenshot saved: 02_empty_form.png (sha256: a8f8f08e5ecd...)"}, {"step": 8, "action": "type", "params": {"selector": "0", "text": "Joh
+2026-03-27 18:41:08.181 | DEBUG    |             form_001 | Step 10 LLM response | tool=screenshot | input={"label": "empty_form"}
+2026-03-27 18:41:08.324 | INFO     |             form_001 | Step 10 | screenshot(empty_form) → OK: Screenshot saved: 03_empty_form.png (sha256: 41189bba3423...)
+2026-03-27 18:41:08.324 | DEBUG    |             form_001 | Step 10 detail | action={'action': 'screenshot', 'label': 'empty_form'} | thinking= | dom_nodes=13 | confidence=0.82
+2026-03-27 18:41:08.367 | DEBUG    |             form_001 | Step 11 | DOM confidence=0.82 | nodes=13
+2026-03-27 18:41:08.367 | INFO     |             form_001 | Step 11 LLM input | dom_nodes=13 | confidence=0.82 | history_items=5 | vision=no
+2026-03-27 18:41:08.368 | DEBUG    |             form_001 | Step 11 system_prompt | You are a browser agent filling out a web form.
+
+HOW TO INTERACT WITH FORM ELEMENTS:
+- Text inputs: use type(selector, text)
+- Radio buttons: use click(selector) to select one
+- Checkboxes: use click(selector) to check/uncheck
+- Submit button: use click(selector)
+
+STEPS:
+1. Take ONE screenshot label
+2026-03-27 18:41:08.368 | DEBUG    |             form_001 | Step 11 page_state | URL: https://httpbin.org/forms/post
+Title: 
+
+[0]  [textbox]  "Customer name:"
+[1]  [textbox]  "Telephone:"
+[2]  [textbox]  "Preferred delivery time:"  (value="18:00")
+[3]  [textbox]  "Delivery instructions:"  (value="18:00")
+[4]  [button]  "Submit order"
+[5]  [textbox]  "E-mail address:"
+[6]  [radio]  "Small"
+[7]  [radio]  "Medium"
+[8]  [radio]  "Large"
+[9]  [checkbox]  "Bacon"
+[10]  [checkbox]  "Extra Cheese"
+[11]  [checkbox]  "Onion"
+[12]  [checkbox]  "Mushroom"
+2026-03-27 18:41:08.369 | DEBUG    |             form_001 | Step 11 history | [{"step": 6, "action": "type", "params": {"selector": "3", "text": "Test order"}, "result": "Typed 'Test order' into '3' (via index)"}, {"step": 7, "action": "screenshot", "params": {"label": "empty_form"}, "result": "Screenshot saved: 02_empty_form.png (sha256: a8f8f08e5ecd...)"}, {"step": 8, "action": "type", "params": {"selector": "0", "text": "John Smith"}, "result": "Typed 'John Smith' into '0' (via index)"}, {"step": 9, "action": "type", "params": {"selector": "1", "text": "555-0123"}, "re
+2026-03-27 18:41:10.143 | DEBUG    |             form_001 | Step 11 LLM response | tool=type | input={"selector": "5", "text": "john@example.com"}
+2026-03-27 18:41:10.232 | INFO     |             form_001 | Step 11 | type(5) → OK: Typed 'john@example.com' into '5' (via index)
+2026-03-27 18:41:10.232 | DEBUG    |             form_001 | Step 11 detail | action={'action': 'type', 'selector': '5', 'text': 'john@example.com'} | thinking= | dom_nodes=13 | confidence=0.82
+2026-03-27 18:41:10.296 | DEBUG    |             form_001 | Step 12 | DOM confidence=0.82 | nodes=13
+2026-03-27 18:41:10.297 | INFO     |             form_001 | Step 12 LLM input | dom_nodes=13 | confidence=0.82 | history_items=5 | vision=no
+2026-03-27 18:41:10.298 | DEBUG    |             form_001 | Step 12 system_prompt | You are a browser agent filling out a web form.
+
+HOW TO INTERACT WITH FORM ELEMENTS:
+- Text inputs: use type(selector, text)
+- Radio buttons: use click(selector) to select one
+- Checkboxes: use click(selector) to check/uncheck
+- Submit button: use click(selector)
+
+STEPS:
+1. Take ONE screenshot label
+2026-03-27 18:41:10.298 | DEBUG    |             form_001 | Step 12 page_state | URL: https://httpbin.org/forms/post
+Title: 
+
+[0]  [textbox]  "Customer name:"
+[1]  [textbox]  "Telephone:"
+[2]  [textbox]  "Preferred delivery time:"  (value="18:00")
+[3]  [textbox]  "Delivery instructions:"  (value="18:00")
+[4]  [button]  "Submit order"
+[5]  [textbox]  "E-mail address:"
+[6]  [radio]  "Small"
+[7]  [radio]  "Medium"
+[8]  [radio]  "Large"
+[9]  [checkbox]  "Bacon"
+[10]  [checkbox]  "Extra Cheese"
+[11]  [checkbox]  "Onion"
+[12]  [checkbox]  "Mushroom"
+2026-03-27 18:41:10.299 | DEBUG    |             form_001 | Step 12 history | [{"step": 7, "action": "screenshot", "params": {"label": "empty_form"}, "result": "Screenshot saved: 02_empty_form.png (sha256: a8f8f08e5ecd...)"}, {"step": 8, "action": "type", "params": {"selector": "0", "text": "John Smith"}, "result": "Typed 'John Smith' into '0' (via index)"}, {"step": 9, "action": "type", "params": {"selector": "1", "text": "555-0123"}, "result": "Typed '555-0123' into '1' (via index)"}, {"step": 10, "action": "screenshot", "params": {"label": "empty_form"}, "result": "Scr
+2026-03-27 18:41:12.344 | DEBUG    |             form_001 | Step 12 LLM response | tool=type | input={"selector": "2", "text": "18:00"}
+2026-03-27 18:41:12.366 | INFO     |             form_001 | Step 12 | type(2) → OK: Typed '18:00' into '2' (via index)
+2026-03-27 18:41:12.366 | DEBUG    |             form_001 | Step 12 detail | action={'action': 'type', 'selector': '2', 'text': '18:00'} | thinking= | dom_nodes=13 | confidence=0.82
+2026-03-27 18:41:12.399 | DEBUG    |             form_001 | Step 13 | DOM confidence=0.82 | nodes=13
+2026-03-27 18:41:12.399 | INFO     |             form_001 | Step 13 LLM input | dom_nodes=13 | confidence=0.82 | history_items=5 | vision=no
+2026-03-27 18:41:12.400 | DEBUG    |             form_001 | Step 13 system_prompt | You are a browser agent filling out a web form.
+
+HOW TO INTERACT WITH FORM ELEMENTS:
+- Text inputs: use type(selector, text)
+- Radio buttons: use click(selector) to select one
+- Checkboxes: use click(selector) to check/uncheck
+- Submit button: use click(selector)
+
+STEPS:
+1. Take ONE screenshot label
+2026-03-27 18:41:12.400 | DEBUG    |             form_001 | Step 13 page_state | URL: https://httpbin.org/forms/post
+Title: 
+
+[0]  [textbox]  "Customer name:"
+[1]  [textbox]  "Telephone:"
+[2]  [textbox]  "Preferred delivery time:"  (value="18:00")
+[3]  [textbox]  "Delivery instructions:"  (value="18:00")
+[4]  [button]  "Submit order"
+[5]  [textbox]  "E-mail address:"
+[6]  [radio]  "Small"
+[7]  [radio]  "Medium"
+[8]  [radio]  "Large"
+[9]  [checkbox]  "Bacon"
+[10]  [checkbox]  "Extra Cheese"
+[11]  [checkbox]  "Onion"
+[12]  [checkbox]  "Mushroom"
+2026-03-27 18:41:12.401 | DEBUG    |             form_001 | Step 13 history | [{"step": 8, "action": "type", "params": {"selector": "0", "text": "John Smith"}, "result": "Typed 'John Smith' into '0' (via index)"}, {"step": 9, "action": "type", "params": {"selector": "1", "text": "555-0123"}, "result": "Typed '555-0123' into '1' (via index)"}, {"step": 10, "action": "screenshot", "params": {"label": "empty_form"}, "result": "Screenshot saved: 03_empty_form.png (sha256: 41189bba3423...)"}, {"step": 11, "action": "type", "params": {"selector": "5", "text": "john@example.com"
+2026-03-27 18:41:30.517 | DEBUG    |             form_001 | Step 13 LLM response | tool=type | input={"selector": "3", "text": "Test order"}
+2026-03-27 18:41:30.535 | INFO     |             form_001 | Step 13 | type(3) → OK: Typed 'Test order' into '3' (via index)
+2026-03-27 18:41:30.535 | DEBUG    |             form_001 | Step 13 detail | action={'action': 'type', 'selector': '3', 'text': 'Test order'} | thinking= | dom_nodes=13 | confidence=0.82
+2026-03-27 18:41:30.558 | DEBUG    |             form_001 | Step 14 | DOM confidence=0.82 | nodes=13
+2026-03-27 18:41:30.558 | INFO     |             form_001 | Step 14 LLM input | dom_nodes=13 | confidence=0.82 | history_items=5 | vision=no
+2026-03-27 18:41:30.559 | DEBUG    |             form_001 | Step 14 system_prompt | You are a browser agent filling out a web form.
+
+HOW TO INTERACT WITH FORM ELEMENTS:
+- Text inputs: use type(selector, text)
+- Radio buttons: use click(selector) to select one
+- Checkboxes: use click(selector) to check/uncheck
+- Submit button: use click(selector)
+
+STEPS:
+1. Take ONE screenshot label
+2026-03-27 18:41:30.559 | DEBUG    |             form_001 | Step 14 page_state | URL: https://httpbin.org/forms/post
+Title: 
+
+[0]  [textbox]  "Customer name:"
+[1]  [textbox]  "Telephone:"
+[2]  [textbox]  "Preferred delivery time:"  (value="18:00")
+[3]  [textbox]  "Delivery instructions:"  (value="18:00")
+[4]  [button]  "Submit order"
+[5]  [textbox]  "E-mail address:"
+[6]  [radio]  "Small"
+[7]  [radio]  "Medium"
+[8]  [radio]  "Large"
+[9]  [checkbox]  "Bacon"
+[10]  [checkbox]  "Extra Cheese"
+[11]  [checkbox]  "Onion"
+[12]  [checkbox]  "Mushroom"
+2026-03-27 18:41:30.559 | DEBUG    |             form_001 | Step 14 history | [{"step": 9, "action": "type", "params": {"selector": "1", "text": "555-0123"}, "result": "Typed '555-0123' into '1' (via index)"}, {"step": 10, "action": "screenshot", "params": {"label": "empty_form"}, "result": "Screenshot saved: 03_empty_form.png (sha256: 41189bba3423...)"}, {"step": 11, "action": "type", "params": {"selector": "5", "text": "john@example.com"}, "result": "Typed 'john@example.com' into '5' (via index)"}, {"step": 12, "action": "type", "params": {"selector": "2", "text": "18:0
+2026-03-27 18:41:32.071 | DEBUG    |             form_001 | Step 14 LLM response | tool=screenshot | input={"label": "empty_form"}
+2026-03-27 18:41:32.163 | INFO     |             form_001 | Step 14 | screenshot(empty_form) → OK: Screenshot saved: 04_empty_form.png (sha256: a8f8f08e5ecd...)
+2026-03-27 18:41:32.164 | DEBUG    |             form_001 | Step 14 detail | action={'action': 'screenshot', 'label': 'empty_form'} | thinking= | dom_nodes=13 | confidence=0.82
+2026-03-27 18:41:32.185 | DEBUG    |             form_001 | Step 15 | DOM confidence=0.82 | nodes=13
+2026-03-27 18:41:32.186 | INFO     |             form_001 | Step 15 LLM input | dom_nodes=13 | confidence=0.82 | history_items=5 | vision=no
+2026-03-27 18:41:32.186 | DEBUG    |             form_001 | Step 15 system_prompt | You are a browser agent filling out a web form.
+
+HOW TO INTERACT WITH FORM ELEMENTS:
+- Text inputs: use type(selector, text)
+- Radio buttons: use click(selector) to select one
+- Checkboxes: use click(selector) to check/uncheck
+- Submit button: use click(selector)
+
+STEPS:
+1. Take ONE screenshot label
+2026-03-27 18:41:32.186 | DEBUG    |             form_001 | Step 15 page_state | URL: https://httpbin.org/forms/post
+Title: 
+
+[0]  [textbox]  "Customer name:"
+[1]  [textbox]  "Telephone:"
+[2]  [textbox]  "Preferred delivery time:"  (value="18:00")
+[3]  [textbox]  "Delivery instructions:"  (value="18:00")
+[4]  [button]  "Submit order"
+[5]  [textbox]  "E-mail address:"
+[6]  [radio]  "Small"
+[7]  [radio]  "Medium"
+[8]  [radio]  "Large"
+[9]  [checkbox]  "Bacon"
+[10]  [checkbox]  "Extra Cheese"
+[11]  [checkbox]  "Onion"
+[12]  [checkbox]  "Mushroom"
+2026-03-27 18:41:32.186 | DEBUG    |             form_001 | Step 15 history | [{"step": 10, "action": "screenshot", "params": {"label": "empty_form"}, "result": "Screenshot saved: 03_empty_form.png (sha256: 41189bba3423...)"}, {"step": 11, "action": "type", "params": {"selector": "5", "text": "john@example.com"}, "result": "Typed 'john@example.com' into '5' (via index)"}, {"step": 12, "action": "type", "params": {"selector": "2", "text": "18:00"}, "result": "Typed '18:00' into '2' (via index)"}, {"step": 13, "action": "type", "params": {"selector": "3", "text": "Test orde
+2026-03-27 18:41:34.048 | DEBUG    |             form_001 | Step 15 LLM response | tool=type | input={"selector": "0", "text": "John Smith"}
+2026-03-27 18:41:34.064 | INFO     |             form_001 | Step 15 | type(0) → OK: Typed 'John Smith' into '0' (via index)
+2026-03-27 18:41:34.065 | DEBUG    |             form_001 | Step 15 detail | action={'action': 'type', 'selector': '0', 'text': 'John Smith'} | thinking= | dom_nodes=13 | confidence=0.82
+2026-03-27 18:41:34.084 | DEBUG    |             form_001 | Step 16 | DOM confidence=0.82 | nodes=13
+2026-03-27 18:41:34.085 | INFO     |             form_001 | Step 16 LLM input | dom_nodes=13 | confidence=0.82 | history_items=5 | vision=no
+2026-03-27 18:41:34.085 | DEBUG    |             form_001 | Step 16 system_prompt | You are a browser agent filling out a web form.
+
+HOW TO INTERACT WITH FORM ELEMENTS:
+- Text inputs: use type(selector, text)
+- Radio buttons: use click(selector) to select one
+- Checkboxes: use click(selector) to check/uncheck
+- Submit button: use click(selector)
+
+STEPS:
+1. Take ONE screenshot label
+2026-03-27 18:41:34.085 | DEBUG    |             form_001 | Step 16 page_state | URL: https://httpbin.org/forms/post
+Title: 
+
+[0]  [textbox]  "Customer name:"
+[1]  [textbox]  "Telephone:"
+[2]  [textbox]  "Preferred delivery time:"  (value="18:00")
+[3]  [textbox]  "Delivery instructions:"  (value="18:00")
+[4]  [button]  "Submit order"
+[5]  [textbox]  "E-mail address:"
+[6]  [radio]  "Small"
+[7]  [radio]  "Medium"
+[8]  [radio]  "Large"
+[9]  [checkbox]  "Bacon"
+[10]  [checkbox]  "Extra Cheese"
+[11]  [checkbox]  "Onion"
+[12]  [checkbox]  "Mushroom"
+2026-03-27 18:41:34.085 | DEBUG    |             form_001 | Step 16 history | [{"step": 11, "action": "type", "params": {"selector": "5", "text": "john@example.com"}, "result": "Typed 'john@example.com' into '5' (via index)"}, {"step": 12, "action": "type", "params": {"selector": "2", "text": "18:00"}, "result": "Typed '18:00' into '2' (via index)"}, {"step": 13, "action": "type", "params": {"selector": "3", "text": "Test order"}, "result": "Typed 'Test order' into '3' (via index)"}, {"step": 14, "action": "screenshot", "params": {"label": "empty_form"}, "result": "Screen
+2026-03-27 18:41:36.191 | DEBUG    |             form_001 | Step 16 LLM response | tool=type | input={"selector": "1", "text": "555-0123"}
+2026-03-27 18:41:36.206 | INFO     |             form_001 | Step 16 | type(1) → OK: Typed '555-0123' into '1' (via index)
+2026-03-27 18:41:36.206 | DEBUG    |             form_001 | Step 16 detail | action={'action': 'type', 'selector': '1', 'text': '555-0123'} | thinking= | dom_nodes=13 | confidence=0.82
+2026-03-27 18:41:36.227 | DEBUG    |             form_001 | Step 17 | DOM confidence=0.82 | nodes=13
+2026-03-27 18:41:36.227 | INFO     |             form_001 | Step 17 LLM input | dom_nodes=13 | confidence=0.82 | history_items=5 | vision=no
+2026-03-27 18:41:36.228 | DEBUG    |             form_001 | Step 17 system_prompt | You are a browser agent filling out a web form.
+
+HOW TO INTERACT WITH FORM ELEMENTS:
+- Text inputs: use type(selector, text)
+- Radio buttons: use click(selector) to select one
+- Checkboxes: use click(selector) to check/uncheck
+- Submit button: use click(selector)
+
+STEPS:
+1. Take ONE screenshot label
+2026-03-27 18:41:36.228 | DEBUG    |             form_001 | Step 17 page_state | URL: https://httpbin.org/forms/post
+Title: 
+
+[0]  [textbox]  "Customer name:"
+[1]  [textbox]  "Telephone:"
+[2]  [textbox]  "Preferred delivery time:"  (value="18:00")
+[3]  [textbox]  "Delivery instructions:"  (value="18:00")
+[4]  [button]  "Submit order"
+[5]  [textbox]  "E-mail address:"
+[6]  [radio]  "Small"
+[7]  [radio]  "Medium"
+[8]  [radio]  "Large"
+[9]  [checkbox]  "Bacon"
+[10]  [checkbox]  "Extra Cheese"
+[11]  [checkbox]  "Onion"
+[12]  [checkbox]  "Mushroom"
+2026-03-27 18:41:36.228 | DEBUG    |             form_001 | Step 17 history | [{"step": 12, "action": "type", "params": {"selector": "2", "text": "18:00"}, "result": "Typed '18:00' into '2' (via index)"}, {"step": 13, "action": "type", "params": {"selector": "3", "text": "Test order"}, "result": "Typed 'Test order' into '3' (via index)"}, {"step": 14, "action": "screenshot", "params": {"label": "empty_form"}, "result": "Screenshot saved: 04_empty_form.png (sha256: a8f8f08e5ecd...)"}, {"step": 15, "action": "type", "params": {"selector": "0", "text": "John Smith"}, "result
+2026-03-27 18:41:38.902 | DEBUG    |             form_001 | Step 17 LLM response | tool=type | input={"selector": "5", "text": "john@example.com"}
+2026-03-27 18:41:38.917 | INFO     |             form_001 | Step 17 | type(5) → OK: Typed 'john@example.com' into '5' (via index)
+2026-03-27 18:41:38.917 | DEBUG    |             form_001 | Step 17 detail | action={'action': 'type', 'selector': '5', 'text': 'john@example.com'} | thinking= | dom_nodes=13 | confidence=0.82
+2026-03-27 18:41:38.939 | DEBUG    |             form_001 | Step 18 | DOM confidence=0.82 | nodes=13
+2026-03-27 18:41:38.939 | INFO     |             form_001 | Step 18 LLM input | dom_nodes=13 | confidence=0.82 | history_items=5 | vision=no
+2026-03-27 18:41:38.940 | DEBUG    |             form_001 | Step 18 system_prompt | You are a browser agent filling out a web form.
+
+HOW TO INTERACT WITH FORM ELEMENTS:
+- Text inputs: use type(selector, text)
+- Radio buttons: use click(selector) to select one
+- Checkboxes: use click(selector) to check/uncheck
+- Submit button: use click(selector)
+
+STEPS:
+1. Take ONE screenshot label
+2026-03-27 18:41:38.940 | DEBUG    |             form_001 | Step 18 page_state | URL: https://httpbin.org/forms/post
+Title: 
+
+[0]  [textbox]  "Customer name:"
+[1]  [textbox]  "Telephone:"
+[2]  [textbox]  "Preferred delivery time:"  (value="18:00")
+[3]  [textbox]  "Delivery instructions:"  (value="18:00")
+[4]  [button]  "Submit order"
+[5]  [textbox]  "E-mail address:"
+[6]  [radio]  "Small"
+[7]  [radio]  "Medium"
+[8]  [radio]  "Large"
+[9]  [checkbox]  "Bacon"
+[10]  [checkbox]  "Extra Cheese"
+[11]  [checkbox]  "Onion"
+[12]  [checkbox]  "Mushroom"
+2026-03-27 18:41:38.940 | DEBUG    |             form_001 | Step 18 history | [{"step": 13, "action": "type", "params": {"selector": "3", "text": "Test order"}, "result": "Typed 'Test order' into '3' (via index)"}, {"step": 14, "action": "screenshot", "params": {"label": "empty_form"}, "result": "Screenshot saved: 04_empty_form.png (sha256: a8f8f08e5ecd...)"}, {"step": 15, "action": "type", "params": {"selector": "0", "text": "John Smith"}, "result": "Typed 'John Smith' into '0' (via index)"}, {"step": 16, "action": "type", "params": {"selector": "1", "text": "555-0123"},
+2026-03-27 18:41:41.304 | DEBUG    |             form_001 | Step 18 LLM response | tool=type | input={"selector": "2", "text": "18:00"}
+2026-03-27 18:41:41.317 | INFO     |             form_001 | Step 18 | type(2) → OK: Typed '18:00' into '2' (via index)
+2026-03-27 18:41:41.317 | DEBUG    |             form_001 | Step 18 detail | action={'action': 'type', 'selector': '2', 'text': '18:00'} | thinking= | dom_nodes=13 | confidence=0.82
+2026-03-27 18:41:41.335 | DEBUG    |             form_001 | Step 19 | DOM confidence=0.82 | nodes=13
+2026-03-27 18:41:41.336 | INFO     |             form_001 | Step 19 LLM input | dom_nodes=13 | confidence=0.82 | history_items=5 | vision=no
+2026-03-27 18:41:41.336 | DEBUG    |             form_001 | Step 19 system_prompt | You are a browser agent filling out a web form.
+
+HOW TO INTERACT WITH FORM ELEMENTS:
+- Text inputs: use type(selector, text)
+- Radio buttons: use click(selector) to select one
+- Checkboxes: use click(selector) to check/uncheck
+- Submit button: use click(selector)
+
+STEPS:
+1. Take ONE screenshot label
+2026-03-27 18:41:41.336 | DEBUG    |             form_001 | Step 19 page_state | URL: https://httpbin.org/forms/post
+Title: 
+
+[0]  [textbox]  "Customer name:"
+[1]  [textbox]  "Telephone:"
+[2]  [textbox]  "Preferred delivery time:"  (value="18:00")
+[3]  [textbox]  "Delivery instructions:"  (value="18:00")
+[4]  [button]  "Submit order"
+[5]  [textbox]  "E-mail address:"
+[6]  [radio]  "Small"
+[7]  [radio]  "Medium"
+[8]  [radio]  "Large"
+[9]  [checkbox]  "Bacon"
+[10]  [checkbox]  "Extra Cheese"
+[11]  [checkbox]  "Onion"
+[12]  [checkbox]  "Mushroom"
+2026-03-27 18:41:41.336 | DEBUG    |             form_001 | Step 19 history | [{"step": 14, "action": "screenshot", "params": {"label": "empty_form"}, "result": "Screenshot saved: 04_empty_form.png (sha256: a8f8f08e5ecd...)"}, {"step": 15, "action": "type", "params": {"selector": "0", "text": "John Smith"}, "result": "Typed 'John Smith' into '0' (via index)"}, {"step": 16, "action": "type", "params": {"selector": "1", "text": "555-0123"}, "result": "Typed '555-0123' into '1' (via index)"}, {"step": 17, "action": "type", "params": {"selector": "5", "text": "john@example.co
+2026-03-27 18:42:03.175 | DEBUG    |             form_001 | Step 19 LLM response | tool=type | input={"selector": "3", "text": "Test order"}
+2026-03-27 18:42:03.195 | INFO     |             form_001 | Step 19 | type(3) → OK: Typed 'Test order' into '3' (via index)
+2026-03-27 18:42:03.195 | DEBUG    |             form_001 | Step 19 detail | action={'action': 'type', 'selector': '3', 'text': 'Test order'} | thinking= | dom_nodes=13 | confidence=0.82
+2026-03-27 18:42:03.219 | DEBUG    |             form_001 | Step 20 | DOM confidence=0.82 | nodes=13
+2026-03-27 18:42:03.220 | INFO     |             form_001 | Step 20 LLM input | dom_nodes=13 | confidence=0.82 | history_items=5 | vision=no
+2026-03-27 18:42:03.220 | DEBUG    |             form_001 | Step 20 system_prompt | You are a browser agent filling out a web form.
+
+HOW TO INTERACT WITH FORM ELEMENTS:
+- Text inputs: use type(selector, text)
+- Radio buttons: use click(selector) to select one
+- Checkboxes: use click(selector) to check/uncheck
+- Submit button: use click(selector)
+
+STEPS:
+1. Take ONE screenshot label
+2026-03-27 18:42:03.221 | DEBUG    |             form_001 | Step 20 page_state | URL: https://httpbin.org/forms/post
+Title: 
+
+[0]  [textbox]  "Customer name:"
+[1]  [textbox]  "Telephone:"
+[2]  [textbox]  "Preferred delivery time:"  (value="18:00")
+[3]  [textbox]  "Delivery instructions:"  (value="18:00")
+[4]  [button]  "Submit order"
+[5]  [textbox]  "E-mail address:"
+[6]  [radio]  "Small"
+[7]  [radio]  "Medium"
+[8]  [radio]  "Large"
+[9]  [checkbox]  "Bacon"
+[10]  [checkbox]  "Extra Cheese"
+[11]  [checkbox]  "Onion"
+[12]  [checkbox]  "Mushroom"
+2026-03-27 18:42:03.221 | DEBUG    |             form_001 | Step 20 history | [{"step": 15, "action": "type", "params": {"selector": "0", "text": "John Smith"}, "result": "Typed 'John Smith' into '0' (via index)"}, {"step": 16, "action": "type", "params": {"selector": "1", "text": "555-0123"}, "result": "Typed '555-0123' into '1' (via index)"}, {"step": 17, "action": "type", "params": {"selector": "5", "text": "john@example.com"}, "result": "Typed 'john@example.com' into '5' (via index)"}, {"step": 18, "action": "type", "params": {"selector": "2", "text": "18:00"}, "resul
+2026-03-27 18:42:04.985 | DEBUG    |             form_001 | Step 20 LLM response | tool=click | input={"selector": "6"}
+2026-03-27 18:42:05.541 | INFO     |             form_001 | Step 20 | click(6) → OK: Clicked '6' (via index)
+2026-03-27 18:42:05.541 | DEBUG    |             form_001 | Step 20 detail | action={'action': 'click', 'selector': '6'} | thinking= | dom_nodes=13 | confidence=0.82
+2026-03-27 18:42:05.560 | DEBUG    |             form_001 | Step 21 | DOM confidence=0.82 | nodes=13
+2026-03-27 18:42:05.560 | INFO     |             form_001 | Step 21 LLM input | dom_nodes=13 | confidence=0.82 | history_items=5 | vision=no
+2026-03-27 18:42:05.561 | DEBUG    |             form_001 | Step 21 system_prompt | You are a browser agent filling out a web form.
+
+HOW TO INTERACT WITH FORM ELEMENTS:
+- Text inputs: use type(selector, text)
+- Radio buttons: use click(selector) to select one
+- Checkboxes: use click(selector) to check/uncheck
+- Submit button: use click(selector)
+
+STEPS:
+1. Take ONE screenshot label
+2026-03-27 18:42:05.561 | DEBUG    |             form_001 | Step 21 page_state | URL: https://httpbin.org/forms/post
+Title: 
+
+[0]  [textbox]  "Customer name:"
+[1]  [textbox]  "Telephone:"
+[2]  [textbox]  "Preferred delivery time:"  (value="18:00")
+[3]  [textbox]  "Delivery instructions:"  (value="18:00")
+[4]  [button]  "Submit order"
+[5]  [textbox]  "E-mail address:"
+[6]  [radio]  "Small"  (checked=True)
+[7]  [radio]  "Medium"
+[8]  [radio]  "Large"
+[9]  [checkbox]  "Bacon"
+[10]  [checkbox]  "Extra Cheese"
+[11]  [checkbox]  "Onion"
+[12]  [checkbox]  "Mushroom"
+2026-03-27 18:42:05.561 | DEBUG    |             form_001 | Step 21 history | [{"step": 16, "action": "type", "params": {"selector": "1", "text": "555-0123"}, "result": "Typed '555-0123' into '1' (via index)"}, {"step": 17, "action": "type", "params": {"selector": "5", "text": "john@example.com"}, "result": "Typed 'john@example.com' into '5' (via index)"}, {"step": 18, "action": "type", "params": {"selector": "2", "text": "18:00"}, "result": "Typed '18:00' into '2' (via index)"}, {"step": 19, "action": "type", "params": {"selector": "3", "text": "Test order"}, "result": "
+2026-03-27 18:42:07.001 | DEBUG    |             form_001 | Step 21 LLM response | tool=click | input={"selector": "9"}
+2026-03-27 18:42:07.557 | INFO     |             form_001 | Step 21 | click(9) → OK: Clicked '9' (via index)
+2026-03-27 18:42:07.557 | DEBUG    |             form_001 | Step 21 detail | action={'action': 'click', 'selector': '9'} | thinking= | dom_nodes=13 | confidence=0.82
+2026-03-27 18:42:07.578 | DEBUG    |             form_001 | Step 22 | DOM confidence=0.82 | nodes=13
+2026-03-27 18:42:07.578 | INFO     |             form_001 | Step 22 LLM input | dom_nodes=13 | confidence=0.82 | history_items=5 | vision=no
+2026-03-27 18:42:07.578 | DEBUG    |             form_001 | Step 22 system_prompt | You are a browser agent filling out a web form.
+
+HOW TO INTERACT WITH FORM ELEMENTS:
+- Text inputs: use type(selector, text)
+- Radio buttons: use click(selector) to select one
+- Checkboxes: use click(selector) to check/uncheck
+- Submit button: use click(selector)
+
+STEPS:
+1. Take ONE screenshot label
+2026-03-27 18:42:07.579 | DEBUG    |             form_001 | Step 22 page_state | URL: https://httpbin.org/forms/post
+Title: 
+
+[0]  [textbox]  "Customer name:"
+[1]  [textbox]  "Telephone:"
+[2]  [textbox]  "Preferred delivery time:"  (value="18:00")
+[3]  [textbox]  "Delivery instructions:"  (value="18:00")
+[4]  [button]  "Submit order"
+[5]  [textbox]  "E-mail address:"
+[6]  [radio]  "Small"  (checked=True)
+[7]  [radio]  "Medium"
+[8]  [radio]  "Large"
+[9]  [checkbox]  "Bacon"  (checked=True)
+[10]  [checkbox]  "Extra Cheese"
+[11]  [checkbox]  "Onion"
+[12]  [checkbox]  "Mushroom"
+2026-03-27 18:42:07.579 | DEBUG    |             form_001 | Step 22 history | [{"step": 17, "action": "type", "params": {"selector": "5", "text": "john@example.com"}, "result": "Typed 'john@example.com' into '5' (via index)"}, {"step": 18, "action": "type", "params": {"selector": "2", "text": "18:00"}, "result": "Typed '18:00' into '2' (via index)"}, {"step": 19, "action": "type", "params": {"selector": "3", "text": "Test order"}, "result": "Typed 'Test order' into '3' (via index)"}, {"step": 20, "action": "click", "params": {"selector": "6"}, "result": "Clicked '6' (via 
+2026-03-27 18:42:11.819 | DEBUG    |             form_001 | Step 22 LLM response | tool=screenshot | input={"label": "filled_form"}
+2026-03-27 18:42:12.025 | INFO     |             form_001 | Step 22 | screenshot(filled_form) → OK: Screenshot saved: 05_filled_form.png (sha256: 090bb2eb6cda...)
+2026-03-27 18:42:12.025 | DEBUG    |             form_001 | Step 22 detail | action={'action': 'screenshot', 'label': 'filled_form'} | thinking= | dom_nodes=13 | confidence=0.82
+2026-03-27 18:42:12.053 | DEBUG    |             form_001 | Step 23 | DOM confidence=0.82 | nodes=13
+2026-03-27 18:42:12.053 | INFO     |             form_001 | Step 23 LLM input | dom_nodes=13 | confidence=0.82 | history_items=5 | vision=no
+2026-03-27 18:42:12.053 | DEBUG    |             form_001 | Step 23 system_prompt | You are a browser agent filling out a web form.
+
+HOW TO INTERACT WITH FORM ELEMENTS:
+- Text inputs: use type(selector, text)
+- Radio buttons: use click(selector) to select one
+- Checkboxes: use click(selector) to check/uncheck
+- Submit button: use click(selector)
+
+STEPS:
+1. Take ONE screenshot label
+2026-03-27 18:42:12.053 | DEBUG    |             form_001 | Step 23 page_state | URL: https://httpbin.org/forms/post
+Title: 
+
+[0]  [textbox]  "Customer name:"
+[1]  [textbox]  "Telephone:"
+[2]  [textbox]  "Preferred delivery time:"  (value="18:00")
+[3]  [textbox]  "Delivery instructions:"  (value="18:00")
+[4]  [button]  "Submit order"
+[5]  [textbox]  "E-mail address:"
+[6]  [radio]  "Small"  (checked=True)
+[7]  [radio]  "Medium"
+[8]  [radio]  "Large"
+[9]  [checkbox]  "Bacon"  (checked=True)
+[10]  [checkbox]  "Extra Cheese"
+[11]  [checkbox]  "Onion"
+[12]  [checkbox]  "Mushroom"
+2026-03-27 18:42:12.054 | DEBUG    |             form_001 | Step 23 history | [{"step": 18, "action": "type", "params": {"selector": "2", "text": "18:00"}, "result": "Typed '18:00' into '2' (via index)"}, {"step": 19, "action": "type", "params": {"selector": "3", "text": "Test order"}, "result": "Typed 'Test order' into '3' (via index)"}, {"step": 20, "action": "click", "params": {"selector": "6"}, "result": "Clicked '6' (via index)"}, {"step": 21, "action": "click", "params": {"selector": "9"}, "result": "Clicked '9' (via index)"}, {"step": 22, "action": "screenshot", "p
+2026-03-27 18:42:13.706 | DEBUG    |             form_001 | Step 23 LLM response | tool=click | input={"selector": "4"}
+2026-03-27 18:42:15.147 | INFO     |             form_001 | Step 23 | click(4) → OK: Clicked '4' (via index)
+2026-03-27 18:42:15.147 | DEBUG    |             form_001 | Step 23 detail | action={'action': 'click', 'selector': '4'} | thinking= | dom_nodes=13 | confidence=0.82
+2026-03-27 18:42:15.247 | DEBUG    |             form_001 | Step 24 | DOM confidence=0.70 | nodes=3
+2026-03-27 18:42:15.248 | INFO     |             form_001 | Step 24 LLM input | dom_nodes=3 | confidence=0.70 | history_items=5 | vision=no
+2026-03-27 18:42:15.248 | DEBUG    |             form_001 | Step 24 system_prompt | You are a browser agent filling out a web form.
+
+HOW TO INTERACT WITH FORM ELEMENTS:
+- Text inputs: use type(selector, text)
+- Radio buttons: use click(selector) to select one
+- Checkboxes: use click(selector) to check/uncheck
+- Submit button: use click(selector)
+
+STEPS:
+1. Take ONE screenshot label
+2026-03-27 18:42:15.249 | DEBUG    |             form_001 | Step 24 page_state | URL: https://httpbin.org/post
+Title: 
+
+[0]  [text]  "{
+  "args": {}, 
+  "data": "", 
+  "files": {}, 
+  "form": {
+    "comments": "Test order", 
+    "custemail": "john@example.com", 
+    "custname": "John Smith", 
+    "custtel": "555-0123", 
+    "delivery": "18:00", 
+    "size": "small", 
+    "topping": "bacon"
+  }, 
+  "headers": {
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7", 
+    "Accept-E
+2026-03-27 18:42:15.249 | DEBUG    |             form_001 | Step 24 history | [{"step": 19, "action": "type", "params": {"selector": "3", "text": "Test order"}, "result": "Typed 'Test order' into '3' (via index)"}, {"step": 20, "action": "click", "params": {"selector": "6"}, "result": "Clicked '6' (via index)"}, {"step": 21, "action": "click", "params": {"selector": "9"}, "result": "Clicked '9' (via index)"}, {"step": 22, "action": "screenshot", "params": {"label": "filled_form"}, "result": "Screenshot saved: 05_filled_form.png (sha256: 090bb2eb6cda...)"}, {"step": 23, "a
+2026-03-27 18:42:16.812 | DEBUG    |             form_001 | Step 24 LLM response | tool=screenshot | input={"label": "result"}
+2026-03-27 18:42:16.964 | INFO     |             form_001 | Step 24 | screenshot(result) → OK: Screenshot saved: 06_result.png (sha256: d322cec67ae4...)
+2026-03-27 18:42:16.965 | DEBUG    |             form_001 | Step 24 detail | action={'action': 'screenshot', 'label': 'result'} | thinking= | dom_nodes=3 | confidence=0.70
+2026-03-27 18:42:17.000 | DEBUG    |             form_001 | Step 25 | DOM confidence=0.70 | nodes=3
+2026-03-27 18:42:17.001 | INFO     |             form_001 | Step 25 LLM input | dom_nodes=3 | confidence=0.70 | history_items=5 | vision=no
+2026-03-27 18:42:17.001 | DEBUG    |             form_001 | Step 25 system_prompt | You are a browser agent filling out a web form.
+
+HOW TO INTERACT WITH FORM ELEMENTS:
+- Text inputs: use type(selector, text)
+- Radio buttons: use click(selector) to select one
+- Checkboxes: use click(selector) to check/uncheck
+- Submit button: use click(selector)
+
+STEPS:
+1. Take ONE screenshot label
+2026-03-27 18:42:17.001 | DEBUG    |             form_001 | Step 25 page_state | URL: https://httpbin.org/post
+Title: 
+
+[0]  [text]  "{
+  "args": {}, 
+  "data": "", 
+  "files": {}, 
+  "form": {
+    "comments": "Test order", 
+    "custemail": "john@example.com", 
+    "custname": "John Smith", 
+    "custtel": "555-0123", 
+    "delivery": "18:00", 
+    "size": "small", 
+    "topping": "bacon"
+  }, 
+  "headers": {
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7", 
+    "Accept-E
+2026-03-27 18:42:17.001 | DEBUG    |             form_001 | Step 25 history | [{"step": 20, "action": "click", "params": {"selector": "6"}, "result": "Clicked '6' (via index)"}, {"step": 21, "action": "click", "params": {"selector": "9"}, "result": "Clicked '9' (via index)"}, {"step": 22, "action": "screenshot", "params": {"label": "filled_form"}, "result": "Screenshot saved: 05_filled_form.png (sha256: 090bb2eb6cda...)"}, {"step": 23, "action": "click", "params": {"selector": "4"}, "result": "Clicked '4' (via index)"}, {"step": 24, "action": "screenshot", "params": {"lab
+2026-03-27 18:42:19.655 | DEBUG    |             form_001 | Step 25 LLM response | tool=done | input={"extracted": {"form_submitted": true, "response_status": "200 OK", "fields_filled": ["custname", "custtel", "custemail", "delivery", "comments", "size", "topping"]}}
+2026-03-27 18:42:19.656 | INFO     |             form_001 | Step 25 | done() → OK: Action: done
+2026-03-27 18:42:19.656 | DEBUG    |             form_001 | Step 25 detail | action={'action': 'done', 'extracted': {'form_submitted': True, 'response_status': '200 OK', 'fields_filled': ['custname', 'custtel', 'custemail', 'delivery', 'comments', 'size', 'topping']}} | thinking= | dom_nodes=3 | confidence=0.70
+2026-03-27 18:42:19.656 | INFO     |             form_001 | Completed | status=done | steps=25 | fields=3
+2026-03-27 18:42:19.772 | INFO     |             form_001 | Worker finished
+2026-03-27 18:42:20.198 | INFO     |               system | Batch complete | samples=1 | duration=102.4s | csv=C:\Users\Humblebee\Documents\GitHub\browser_use_agent\playwright_agent\evidence\run_2026-03-27_184037\combined.csv

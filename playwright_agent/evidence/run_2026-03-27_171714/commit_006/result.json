@@ -1,0 +1,49 @@
+{
+  "sample_id": "commit_006",
+  "status": "done",
+  "steps": 4,
+  "extracted": {
+    "commit_sha": "ca0ea977c63e180159c921986731aa3b71683d74",
+    "pr_number": "305844",
+    "pr_creator": "lszomoru",
+    "approvers": [
+      "roblourens"
+    ],
+    "merger": "lszomoru",
+    "checks_passed": 18,
+    "checks_failed": 0,
+    "merged_with_failures": false,
+    "ci_failure_details": null,
+    "jira_url": null
+  },
+  "artifacts": [
+    {
+      "filename": "01_commit_page.png",
+      "sha256": "8d66dbc91f260389e03bf2cba62f2082722cb6967d044cc1dfee889ac84a3297",
+      "source_url": "https://github.com/microsoft/vscode/commit/ca0ea977c63e180159c921986731aa3b71683d74",
+      "timestamp": "2026-03-28T00:18:52.198465Z"
+    },
+    {
+      "filename": "02_pr_page.png",
+      "sha256": "decc4dfc2cc80aab9f1478f7bfffe27fc868d3e3d01b454ecba4e2beb09e2899",
+      "source_url": "https://github.com/microsoft/vscode/pull/305844",
+      "timestamp": "2026-03-28T00:19:20.488188Z"
+    }
+  ],
+  "judgment": {
+    "answer": "yes",
+    "confidence": 0.97,
+    "reasoning": "PR #305844 was created by lszomoru and approved by roblourens before merge. All 18/18 checks passed with no failures. The PR was properly reviewed with an approval from a human reviewer (roblourens) who has write access.",
+    "evidence_refs": [
+      "element [2]: '18 / 18 checks OK'",
+      "element [21]: 'roblourens approved these changes'",
+      "element [30]: PR creator 'lszomoru'",
+      "element [65]: merged at 'March 27, 2026 22:30'"
+    ]
+  },
+  "flagged": false,
+  "notes": [],
+  "errors": [],
+  "started_at": "2026-03-28T00:18:27.769765Z",
+  "finished_at": "2026-03-28T00:19:26.252509Z"
+}
