@@ -80,7 +80,16 @@ async def run(
     memory = _get_memory()
     tools = action_tool_schema()
     history: list[dict] = []
-    progress: dict = {"pages_visited": [], "fields_found": [], "artifacts": []}
+    progress: dict = {
+        "pages_visited": [],
+        "fields_found": [],
+        "artifacts": [],
+        "failed_urls": [],         # URLs that errored (404, timeout, auth)
+        "exhausted_pages": [],     # pages where all useful data was already extracted
+        "blocked_selectors": [],   # selectors that failed 2+ times
+        "dead_ends": [],           # actions/paths that led nowhere
+    }
+    _selector_fail_counts: dict[str, int] = {}  # track selector failures for blocked detection
     loop_counter: dict[tuple, int] = {}  # (url, action_name) → count
     consecutive_failures = 0
     step = 0
@@ -149,6 +158,11 @@ async def run(
                 notes=progress_notes,
                 steps=step,
             )
+            if sample.url and status != "done":
+                try:
+                    memory.learn_failures(sample.url, progress, status, reason=reason)
+                except Exception:
+                    pass
             return
 
         # ---- 1. OBSERVE ----
@@ -286,10 +300,30 @@ async def run(
             url_short = (action.url or page.url)[:80]
             if url_short not in progress["pages_visited"]:
                 progress["pages_visited"].append(url_short)
+        if action.action == "goto" and not action_result.success:
+            failed_url = (action.url or "")[:80]
+            if failed_url and failed_url not in progress["failed_urls"]:
+                progress["failed_urls"].append(failed_url)
         if action.action == "screenshot" and action_result.success:
             progress["artifacts"].append(action.label or "screenshot")
         if action_result.extracted_text:
             progress["fields_found"].append(action_result.extracted_text[:50])
+
+        # Track selector failures → blocked_selectors after 2 failures
+        if not action_result.success and action.selector:
+            sel = action.selector[:60]
+            _selector_fail_counts[sel] = _selector_fail_counts.get(sel, 0) + 1
+            if _selector_fail_counts[sel] >= 2 and sel not in progress["blocked_selectors"]:
+                progress["blocked_selectors"].append(sel)
+                log.info(f"Step {step} | Selector blocked (failed {_selector_fail_counts[sel]}x): {sel}")
+
+        # Track dead ends — repeated action on same URL with no data produced
+        url_action_key = (page.url[:80], action.action)
+        if loop_counter.get(url_action_key, 0) >= 3:
+            dead = f"{action.action} on {page.url[:60]}"
+            if dead not in progress["dead_ends"]:
+                progress["dead_ends"].append(dead)
+                log.info(f"Step {step} | Dead end detected: {dead}")
 
         # ---- NETWORK ERROR TRACKING ----
         if not action_result.success and _is_infra_error(action_result.error or ""):
@@ -311,6 +345,10 @@ async def run(
             progress_notes.append(note)
             if data_changed:
                 items_collected += 1
+                # Mark current page as exhausted (data extracted) so agent knows not to revisit
+                current_url = page.url[:80]
+                if current_url not in progress["exhausted_pages"]:
+                    progress["exhausted_pages"].append(current_url)
             log.info(f"Step {step} | save_progress #{items_collected} | new_data={data_changed} | {note} | keys={list(partial.keys())}")
             output_mgr.write_checkpoint(step, accumulated, progress_notes)
 
@@ -463,14 +501,22 @@ async def run(
                 steps=step,
             )
 
-            # Learn from successful runs — distill navigation pattern for future use
-            if final_status == "done" and sample.url:
+            # Learn from runs — successes become patterns, failures become warnings
+            if sample.url:
                 try:
-                    learned = await memory.learn_from_run(
-                        client, sample.url, task_spec.goal, history, step, final_status,
-                    )
-                    if learned:
-                        log.info(f"Memory saved | domain pattern learned for {sample.url}")
+                    if final_status == "done":
+                        learned = await memory.learn_from_run(
+                            client, sample.url, task_spec.goal, history, step, final_status,
+                        )
+                        if learned:
+                            log.info(f"Memory saved | domain pattern learned for {sample.url}")
+                    else:
+                        learned = memory.learn_failures(
+                            sample.url, progress, final_status,
+                            reason=completion_notes[-1] if completion_notes else "",
+                        )
+                        if learned:
+                            log.info(f"Memory saved | failure warnings stored for {sample.url}")
                 except Exception as e:
                     log.debug(f"Memory save failed (non-critical): {e}")
             return
@@ -482,6 +528,15 @@ async def run(
                 errors=[action.note or "Agent called fail"],
                 steps=step,
             )
+            # Learn from failure — store dead ends, broken selectors, failed URLs
+            if sample.url:
+                try:
+                    memory.learn_failures(
+                        sample.url, progress, "failed",
+                        reason=action.note or "Agent called fail",
+                    )
+                except Exception:
+                    pass
             return
 
         # ---- 6. LOOP & FAILURE TRACKING ----
@@ -712,10 +767,10 @@ async def _summarize_steps(
     goal: str,
     log,
 ) -> str:
-    """Ask Claude (fast model) to summarize a block of steps into 2-3 sentences.
+    """Produce a structured summary: findings, gaps, next actions.
 
-    Uses the cheap/fast model to keep costs low. Falls back to mechanical
-    summary if the LLM call fails.
+    Uses the cheap/fast model. Returns a compact structured block the
+    agent can act on immediately. Falls back to mechanical summary.
     """
     step_text = "\n".join(
         f"Step {h['step']}: {h['action']}({json.dumps(h.get('params', {}), default=str)[:80]}) → {h.get('result', '')[:80]}"
@@ -724,17 +779,20 @@ async def _summarize_steps(
     try:
         response = await client.messages.create(
             model=config.LLM_FAST_MODEL,
-            max_tokens=200,
+            max_tokens=250,
             messages=[{
                 "role": "user",
                 "content": (
-                    f"Summarize these browser agent steps in 2-3 sentences. "
-                    f"Focus on what was accomplished and what data was collected. "
-                    f"Task goal: {goal}\n\nSteps:\n{step_text}"
+                    f"Summarize these browser agent steps in a structured format. "
+                    f"Task goal: {goal}\n\nSteps:\n{step_text}\n\n"
+                    f"Reply in EXACTLY this format (3 lines, no extra text):\n"
+                    f"FOUND: <what data/evidence was collected>\n"
+                    f"GAPS: <what is still missing or incomplete>\n"
+                    f"NEXT: <best next action to make progress>"
                 ),
             }],
         )
-        return f"Steps {steps[0]['step']}-{steps[-1]['step']}: {response.content[0].text.strip()}"
+        return f"Steps {steps[0]['step']}-{steps[-1]['step']}:\n{response.content[0].text.strip()}"
     except Exception as e:
         log.debug(f"LLM summary failed, using mechanical fallback: {str(e)[:100]}")
         actions = "; ".join(f"s{h['step']}:{h['action']}" for h in steps)
@@ -746,9 +804,10 @@ def _estimate_tokens(text: str) -> int:
     return max(1, len(text) // 4)
 
 
-# Token budget = 8% of model context window (floor 8K).
-# Why 8%: LLMs lose attention on mid-prompt content above ~20% fill ("lost in the middle").
-PROMPT_TOKEN_BUDGET = max(8_000, int(config.LLM_CONTEXT_WINDOW * 0.08))
+# Token budget = 8% of model context window, capped at 24K, floor 8K.
+# Why 8%: LLMs lose attention on mid-prompt content above ~20% fill ("lost in the middle" — Liu et al. 2023).
+# Cap at 24K: even a 1M-context model doesn't need 80K of prompt for a browser agent step.
+PROMPT_TOKEN_BUDGET = min(24_000, max(8_000, int(config.LLM_CONTEXT_WINDOW * 0.08)))
 HISTORY_TOKEN_SHARE = 0.30  # 30% of budget goes to action history
 MIN_HISTORY_ITEMS = 5
 MAX_HISTORY_ITEMS = 25
@@ -868,7 +927,7 @@ def _build_messages(
     if step_summaries:
         parts.append(f"\n## Earlier steps (condensed)\n" + "\n".join(step_summaries[-3:]))
 
-    # Progress summary (persists beyond history window — long-horizon memory)
+    # Progress summary (persists beyond history window — structured run state)
     if progress and any(progress.values()):
         progress_lines = []
         if progress.get("pages_visited"):
@@ -877,8 +936,16 @@ def _build_messages(
             progress_lines.append(f"Screenshots taken: {', '.join(progress['artifacts'])}")
         if progress.get("fields_found"):
             progress_lines.append(f"Data extracted so far: {', '.join(progress['fields_found'][-5:])}")
+        if progress.get("failed_urls"):
+            progress_lines.append(f"FAILED URLs (skip these): {', '.join(progress['failed_urls'][-5:])}")
+        if progress.get("blocked_selectors"):
+            progress_lines.append(f"BROKEN selectors (don't retry): {', '.join(progress['blocked_selectors'][-5:])}")
+        if progress.get("dead_ends"):
+            progress_lines.append(f"DEAD ENDS (tried, didn't work): {', '.join(progress['dead_ends'][-3:])}")
+        if progress.get("exhausted_pages"):
+            progress_lines.append(f"Exhausted pages (all data taken): {', '.join(progress['exhausted_pages'][-5:])}")
         if progress_lines:
-            parts.append(f"\n## Progress so far\n" + "\n".join(progress_lines))
+            parts.append(f"\n## Run state\n" + "\n".join(progress_lines))
 
     # Action history (last 5 steps — recent context)
     if history:

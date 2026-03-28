@@ -40,57 +40,131 @@ Return ONLY valid JSON, no markdown."""
 
 
 class MemoryStore:
-    """Domain-keyed pattern store with LLM-powered distillation."""
+    """Domain-keyed pattern store with LLM-powered distillation.
+
+    Stores two kinds of memories:
+    - Procedural patterns (from successes): reusable navigation sequences
+    - Episodic warnings (from failures): dead ends, broken selectors, traps
+    """
 
     def __init__(self, memory_dir: Path | None = None):
         self.memory_dir = memory_dir or config.MEMORY_DIR
         self.patterns_file = self.memory_dir / "patterns.json"
-        self._patterns: dict = self._load()
+        self.failures_file = self.memory_dir / "failures.json"
+        self._patterns: dict = self._load(self.patterns_file)
+        self._failures: dict = self._load(self.failures_file)
 
-    def _load(self) -> dict:
-        if self.patterns_file.exists():
+    @staticmethod
+    def _load(filepath: Path) -> dict:
+        if filepath.exists():
             try:
-                return json.loads(self.patterns_file.read_text(encoding="utf-8"))
+                return json.loads(filepath.read_text(encoding="utf-8"))
             except (json.JSONDecodeError, OSError):
                 return {}
         return {}
 
-    def _save(self) -> None:
+    def _save_file(self, data: dict, filepath: Path) -> None:
         self.memory_dir.mkdir(parents=True, exist_ok=True)
-        tmp = self.patterns_file.with_suffix(".json.tmp")
-        tmp.write_text(json.dumps(self._patterns, indent=2, default=str), encoding="utf-8")
-        tmp.replace(self.patterns_file)
+        tmp = filepath.with_suffix(".json.tmp")
+        tmp.write_text(json.dumps(data, indent=2, default=str), encoding="utf-8")
+        tmp.replace(filepath)
+
+    def _save(self) -> None:
+        self._save_file(self._patterns, self.patterns_file)
+
+    def _save_failures(self) -> None:
+        self._save_file(self._failures, self.failures_file)
 
     def get_hints(self, url: str) -> str | None:
         """Retrieve navigation hints for a URL's domain.
 
-        Returns a compact text block to inject into the agent prompt,
-        or None if no patterns exist for this domain.
+        Returns a compact text block combining success patterns and failure
+        warnings, or None if no memories exist for this domain.
         """
         domain = urlparse(url).netloc
         patterns = self._patterns.get(domain, [])
-        if not patterns:
+        failures = self._failures.get(domain, [])
+
+        if not patterns and not failures:
             return None
 
-        parts = [f"## Navigation memory for {domain}",
-                 f"(from {len(patterns)} previous successful run{'s' if len(patterns) > 1 else ''})\n"]
+        parts: list[str] = []
 
-        for p in patterns:
-            parts.append(f"**{p.get('task_type', 'task')}** ({p.get('avg_steps', '?')} steps avg)")
-            seq = p.get("action_sequence", [])
-            if seq:
-                parts.append("Efficient sequence: " + " → ".join(seq))
-            for tip in p.get("tips", []):
-                parts.append(f"• {tip}")
-            for avoid in p.get("avoid", []):
-                parts.append(f"⚠ Avoid: {avoid}")
+        if patterns:
+            parts.append(f"## Navigation memory for {domain}")
+            parts.append(f"(from {len(patterns)} previous successful run{'s' if len(patterns) > 1 else ''})\n")
+            for p in patterns:
+                parts.append(f"**{p.get('task_type', 'task')}** ({p.get('avg_steps', '?')} steps avg)")
+                seq = p.get("action_sequence", [])
+                if seq:
+                    parts.append("Efficient sequence: " + " → ".join(seq))
+                for tip in p.get("tips", []):
+                    parts.append(f"• {tip}")
+                for avoid in p.get("avoid", []):
+                    parts.append(f"⚠ Avoid: {avoid}")
+                parts.append("")
+
+            for p in patterns:
+                p["uses"] = p.get("uses", 0) + 1
+            self._save()
+
+        if failures:
+            parts.append(f"## Known issues on {domain} (from past failures)")
+            for f in failures[-3:]:  # cap at 3 most recent
+                if f.get("failed_urls"):
+                    parts.append(f"Dead URLs (skip): {', '.join(f['failed_urls'][:5])}")
+                if f.get("blocked_selectors"):
+                    parts.append(f"Broken selectors: {', '.join(f['blocked_selectors'][:5])}")
+                if f.get("dead_ends"):
+                    parts.append(f"Dead ends: {', '.join(f['dead_ends'][:3])}")
+                if f.get("failure_reason"):
+                    parts.append(f"Previous failure: {f['failure_reason']}")
             parts.append("")
 
-        for p in patterns:
-            p["uses"] = p.get("uses", 0) + 1
-        self._save()
+        return "\n".join(parts) if parts else None
 
-        return "\n".join(parts)
+    def learn_failures(
+        self,
+        url: str,
+        progress: dict,
+        status: str,
+        reason: str = "",
+    ) -> bool:
+        """Store failure signals so future runs avoid the same dead ends.
+
+        Learns from: failed, partial_success, needs_review runs.
+        Stores: failed URLs, broken selectors, dead ends, failure reason.
+        """
+        if status == "done":
+            return False
+
+        domain = urlparse(url).netloc
+        if not domain:
+            return False
+
+        failed_urls = progress.get("failed_urls", [])
+        blocked = progress.get("blocked_selectors", [])
+        dead_ends = progress.get("dead_ends", [])
+
+        if not failed_urls and not blocked and not dead_ends and not reason:
+            return False
+
+        entry = {
+            "status": status,
+            "failure_reason": reason[:200] if reason else "",
+            "failed_urls": failed_urls[:10],
+            "blocked_selectors": blocked[:10],
+            "dead_ends": dead_ends[:5],
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        }
+
+        if domain not in self._failures:
+            self._failures[domain] = []
+
+        self._failures[domain].append(entry)
+        self._failures[domain] = self._failures[domain][-config.MAX_PATTERNS_PER_DOMAIN:]
+        self._save_failures()
+        return True
 
     async def learn_from_run(
         self,
