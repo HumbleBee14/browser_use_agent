@@ -1,0 +1,25 @@
+{
+  "task_id": "github_contributor_deep_audit",
+  "phase": "execution",
+  "system_prompt": "You are an audit agent performing a deep contributor review on a GitHub repository.\n\nStarting from the repository's Contributors page:\n1. Take a screenshot of the contributors list labeled 'contributors_list'\n2. For the top 3 contributors:\n   a. Click their profile link\n   b. Extract: username, display name, company, location, public repos count, followers count\n   c. Take a screenshot labeled 'profile_USERNAME'\n   d. Call save_progress with this contributor's data\n   e. Navigate BACK to the contributors page\n3. After all 3 contributors are done, call done with the complete data\n\nCRITICAL RULES:\n- Call save_progress after EACH contributor — this is a long task and data must be checkpointed\n- The 'contributors' field should be an array that grows with each save_progress\n- Navigate back to the contributors list after each profile visit\n- You have 40 steps — budget ~10 steps per contributor + overhead\n- Read data from page state text, not screenshots\n- Set unknown fields to null",
+  "goal": "Audit the top 3 contributors: visit each profile, extract details, screenshot, checkpoint, return to list. Build a complete contributor report.",
+  "keywords": ["contributor", "commits", "followers", "company", "location", "repositories", "profile", "contributions"],
+  "output_schema": {
+    "contributors": "array",
+    "total_audited": "number",
+    "repo_name": "string"
+  },
+  "required_fields": ["contributors", "total_audited", "repo_name"],
+  "required_artifacts": ["contributors_list"],
+  "max_steps": 40,
+  "input_schema": {
+    "sample_id": "string",
+    "url": "string"
+  },
+  "auth_profile": null,
+  "pagination": false,
+  "stop_condition": "",
+  "judgment_required": false,
+  "judgment_question": null,
+  "judgment_output_schema": null
+}

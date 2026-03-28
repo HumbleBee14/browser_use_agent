@@ -79,6 +79,37 @@ class OutputManager:
         """Append a step to the action log."""
         self._action_log.append(record)
 
+    def write_checkpoint(
+        self,
+        step: int,
+        accumulated: dict,
+        progress_notes: list[str],
+        status: str = "in_progress",
+    ) -> None:
+        """Write a live checkpoint file that updates as the agent runs.
+
+        This file is overwritten each time — always reflects latest state.
+        Useful for monitoring long-horizon tasks in real-time.
+        """
+        checkpoint = {
+            "sample_id": self.sample_id,
+            "status": status,
+            "step": step,
+            "max_steps": None,  # filled by caller if needed
+            "accumulated_data": accumulated,
+            "progress_notes": progress_notes,
+            "artifacts_so_far": [a.model_dump() for a in self._artifacts],
+            "steps_logged": len(self._action_log),
+            "started_at": self._started_at,
+            "updated_at": datetime.utcnow().isoformat() + "Z",
+        }
+        path = self.sample_dir / "checkpoint.json"
+        tmp = self.sample_dir / "checkpoint.json.tmp"
+        tmp.write_text(
+            json.dumps(checkpoint, indent=2, default=str), encoding="utf-8"
+        )
+        tmp.replace(path)
+
     def write_result(
         self,
         status: str = "done",

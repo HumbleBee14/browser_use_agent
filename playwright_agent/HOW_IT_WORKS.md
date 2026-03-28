@@ -242,6 +242,82 @@ RATE_LIMITS = {
 
 Concurrency-safe — all workers share one event loop, one lock.
 
+## Long-Horizon Task Support
+
+Standard tasks (profile extraction, single-page audit) complete in 2-10 steps. Long-horizon tasks (multi-page audits, cross-link navigation chains) need 30-50+ steps. Four mechanisms make this work:
+
+### 1. `save_progress` Action
+
+A 10th agent action. Checkpoints partial data **without stopping** the loop:
+
+```
+Step 8:  save_progress({ "prs": [{ "title": "Fix editor...", "author": "alice" }] })
+         → checkpoint.json updated, agent continues
+Step 16: save_progress({ "prs": [{ "title": "Refactor sync...", "author": "bob" }] })
+         → data merged with previous checkpoint, agent continues
+Step 22: done({ "total_prs_audited": 2, "all_checks_passed": true })
+         → accumulated + final data merged → result.json
+```
+
+Data is **deep-merged** across calls — arrays append, dicts recurse. If the agent crashes at step 20, `checkpoint.json` has all data from steps 8 and 16.
+
+### 2. Live `checkpoint.json`
+
+Written to the sample's evidence folder every 5 steps and on every `save_progress` call. You can watch it update in real-time:
+
+```json
+{
+  "sample_id": "pr_chain_audit",
+  "status": "in_progress",
+  "step": 16,
+  "accumulated_data": {
+    "prs": [
+      { "title": "Fix editor crash", "author": "alice", "reviewers": ["bob"] },
+      { "title": "Refactor sync module", "author": "bob", "reviewers": ["alice", "carol"] }
+    ]
+  },
+  "progress_notes": ["Completed PR #1 of 5", "Completed PR #2 of 5"],
+  "artifacts_so_far": [{"filename": "01_pr_overview.png", "sha256": "..."}],
+  "steps_logged": 16,
+  "updated_at": "2026-03-27T18:30:00Z"
+}
+```
+
+Monitor it live: `watch -n 1 cat evidence/run_XXXX/sample_id/checkpoint.json`
+
+### 3. Step Summary (Condensed History)
+
+Every 10 steps, older history is condensed into a one-line summary. The agent always sees:
+- **Last 5 raw actions** (recent context)
+- **Condensed summaries** of earlier work (long-term memory)
+- **Full accumulated data** from save_progress (what was collected)
+- **Step budget** ("Step 16 of 40 — 24 remaining")
+
+This keeps token cost flat while giving the agent awareness of its full journey.
+
+### 4. Crash Recovery
+
+If the agent hits `max_steps` or crashes, accumulated data is **not lost**:
+- `checkpoint.json` has the latest checkpoint
+- `result.json` includes accumulated data (status: `failed`, but `extracted` has partial data)
+- `action_log.json` has the full step trace up to the crash point
+
+### Test Cases
+
+**PR Audit Chain** — the showcase for long-horizon:
+```bash
+python main.py --task tasks/github_pr_audit_chain.json \
+  --input tasks/inputs/github_pr_chain.csv --no-headless
+```
+Agent navigates merged PR list → clicks into each PR → extracts fields → screenshots → checkpoints → navigates back → repeats for 3-5 PRs. ~30-50 steps.
+
+**Contributor Deep Audit** — cross-page navigation:
+```bash
+python main.py --task tasks/github_contributor_deep_audit.json \
+  --input tasks/inputs/github_contributors.csv --no-headless
+```
+Agent visits contributors page → clicks each profile → extracts details → screenshots → checkpoints → navigates back → repeats for top 3. ~30-40 steps.
+
 ## What Makes It System-Agnostic
 
 Zero site-specific code in any Python file. The agent reads the live DOM and reasons about it. All site knowledge lives in:

@@ -11,6 +11,13 @@ Key invariants:
 - done/fail terminate the loop — max_steps is the hard ceiling
 - Loop detection: same (url, action) 3+ times → inject recovery nudge
 - Consecutive failures: 3+ → inject visible element list
+
+Long-horizon support:
+- save_progress action: checkpoint partial data without stopping
+- Accumulated extraction buffer: merged across save_progress calls
+- Step summary: every 10 steps, condense history into a summary
+- Live checkpoint.json: updated on every save_progress + every 5 steps
+- Progress-aware prompt: shows collected data, pages visited, step budget
 """
 
 from __future__ import annotations
@@ -62,9 +69,17 @@ async def run(
     client = _get_client()
     tools = action_tool_schema()
     history: list[dict] = []
+    progress: dict = {"pages_visited": [], "fields_found": [], "artifacts": []}
     loop_counter: dict[tuple, int] = {}  # (url, action_name) → count
     consecutive_failures = 0
     step = 0
+
+    # Long-horizon state
+    accumulated: dict = {}           # merged data from save_progress calls
+    progress_notes: list[str] = []   # human-readable notes from save_progress
+    step_summaries: list[str] = []   # condensed summaries every SUMMARY_INTERVAL steps
+    SUMMARY_INTERVAL = 10
+    CHECKPOINT_INTERVAL = 5
 
     # Navigate to starting URL if provided — fail fast if unreachable
     if sample.url:
@@ -108,6 +123,10 @@ async def run(
             snap=snap,
             consecutive_failures=consecutive_failures,
             loop_counter=loop_counter,
+            progress=progress,
+            accumulated=accumulated,
+            step_summaries=step_summaries,
+            current_step=step,
         )
 
         # Log everything going into the LLM call — full context for debugging
@@ -202,6 +221,45 @@ async def run(
         if action_result.extracted_text:
             log.debug(f"Step {step} extracted | {action_result.extracted_text[:300]}")
 
+        # Update persistent progress (survives history trimming)
+        if action.action == "goto" and action_result.success:
+            url_short = (action.url or page.url)[:80]
+            if url_short not in progress["pages_visited"]:
+                progress["pages_visited"].append(url_short)
+        if action.action == "screenshot" and action_result.success:
+            progress["artifacts"].append(action.label or "screenshot")
+        if action_result.extracted_text:
+            progress["fields_found"].append(action_result.extracted_text[:50])
+
+        # ---- SAVE_PROGRESS: checkpoint partial data without stopping ----
+        if action.action == "save_progress":
+            partial = action.extracted or {}
+            _deep_merge(accumulated, partial)
+            note = action.note or f"Checkpoint at step {step}"
+            progress_notes.append(note)
+            log.info(f"Step {step} | save_progress | {note} | keys={list(partial.keys())}")
+            output_mgr.write_checkpoint(step, accumulated, progress_notes)
+            history.append({
+                "step": step,
+                "action": "system_notice",
+                "result": f"Progress saved. You have {task_spec.max_steps - step} steps remaining. Keep going.",
+            })
+            consecutive_failures = 0
+            continue
+
+        # ---- STEP SUMMARY: condense old history every N steps ----
+        if step > 0 and step % SUMMARY_INTERVAL == 0 and len(history) > 5:
+            old_actions = history[:-5]
+            summary_text = "; ".join(
+                f"s{h['step']}:{h['action']}" for h in old_actions
+            )
+            step_summaries.append(f"Steps {old_actions[0]['step']}-{old_actions[-1]['step']}: {summary_text}")
+            log.debug(f"Step {step} | History condensed | {len(old_actions)} steps → summary")
+
+        # ---- AUTO-CHECKPOINT: write checkpoint.json every N steps ----
+        if step > 0 and step % CHECKPOINT_INTERVAL == 0:
+            output_mgr.write_checkpoint(step, accumulated, progress_notes)
+
         # Log the step
         output_mgr.log_step(StepRecord(
             step=step,
@@ -223,6 +281,11 @@ async def run(
         # ---- 5. CHECK TERMINATION ----
         if action.action == "done":
             extracted = action.extracted or {}
+            # Merge accumulated checkpoint data with final extraction
+            if accumulated:
+                merged = dict(accumulated)
+                _deep_merge(merged, extracted)
+                extracted = merged
 
             # Machine-checkable completion: verify required fields (use "is None" not "not" — 0/false are valid)
             missing = [f for f in task_spec.required_fields if f not in extracted or extracted[f] is None]
@@ -315,8 +378,12 @@ async def run(
 
     # Exhausted max_steps without done/fail
     log.warning(f"Exhausted {task_spec.max_steps} steps without completing")
+    # Save accumulated data so partial work isn't lost
+    if accumulated:
+        output_mgr.write_checkpoint(step, accumulated, progress_notes, status="max_steps_exceeded")
     output_mgr.write_result(
         status="failed",
+        extracted=accumulated or {},
         errors=[f"Exhausted {task_spec.max_steps} steps without completing"],
         steps=step,
     )
@@ -358,8 +425,10 @@ async def _dispatch(
         elif action.action == "wait":
             return await browser.wait_for(page, action.selector or "")
 
+        elif action.action == "save_progress":
+            return ActionResult(success=True, description="Progress checkpointed")
+
         elif action.action in ("done", "fail"):
-            # Handled in the main loop
             return ActionResult(success=True, description=f"Action: {action.action}")
 
         else:
@@ -367,6 +436,17 @@ async def _dispatch(
 
     except Exception as e:
         return ActionResult(success=False, error=f"Dispatch error: {str(e)[:200]}")
+
+
+def _deep_merge(base: dict, update: dict) -> None:
+    """Merge update into base, appending to lists and recursing into dicts."""
+    for key, val in update.items():
+        if key in base and isinstance(base[key], list) and isinstance(val, list):
+            base[key].extend(val)
+        elif key in base and isinstance(base[key], dict) and isinstance(val, dict):
+            _deep_merge(base[key], val)
+        else:
+            base[key] = val
 
 
 def _build_messages(
@@ -378,6 +458,10 @@ def _build_messages(
     snap: dom_extractor.DOMSnapshot,
     consecutive_failures: int,
     loop_counter: dict,
+    progress: dict | None = None,
+    accumulated: dict | None = None,
+    step_summaries: list[str] | None = None,
+    current_step: int = 0,
 ) -> list[dict]:
     """Build the message list for the LLM call.
 
@@ -398,13 +482,41 @@ def _build_messages(
     if vision_text:
         parts.append(f"\n## Visual analysis (DOM was insufficient)\n{vision_text}")
 
-    # Action history
+    # Step budget awareness
+    if current_step > 0:
+        remaining = task_spec.max_steps - current_step
+        parts.append(f"\n**Step {current_step} of {task_spec.max_steps}** ({remaining} remaining)")
+
+    # Accumulated data from save_progress calls (long-term memory)
+    if accumulated:
+        acc_text = json.dumps(accumulated, indent=2, default=str)
+        if len(acc_text) > 2000:
+            acc_text = acc_text[:2000] + "\n... (truncated)"
+        parts.append(f"\n## Data collected so far (via save_progress)\n```json\n{acc_text}\n```")
+
+    # Step summaries (condensed history from earlier steps)
+    if step_summaries:
+        parts.append(f"\n## Earlier steps (condensed)\n" + "\n".join(step_summaries[-3:]))
+
+    # Progress summary (persists beyond history window — long-horizon memory)
+    if progress and any(progress.values()):
+        progress_lines = []
+        if progress.get("pages_visited"):
+            progress_lines.append(f"Pages visited: {', '.join(progress['pages_visited'][-10:])}")
+        if progress.get("artifacts"):
+            progress_lines.append(f"Screenshots taken: {', '.join(progress['artifacts'])}")
+        if progress.get("fields_found"):
+            progress_lines.append(f"Data extracted so far: {', '.join(progress['fields_found'][-5:])}")
+        if progress_lines:
+            parts.append(f"\n## Progress so far\n" + "\n".join(progress_lines))
+
+    # Action history (last 5 steps — recent context)
     if history:
         history_text = "\n".join(
             f"Step {h['step']}: {h['action']} → {h.get('result', '')[:100]}"
             for h in history
         )
-        parts.append(f"\n## Actions taken so far (last {len(history)})\n{history_text}")
+        parts.append(f"\n## Recent actions (last {len(history)})\n{history_text}")
 
     # Loop detection nudge
     for (url, act_name), count in loop_counter.items():
