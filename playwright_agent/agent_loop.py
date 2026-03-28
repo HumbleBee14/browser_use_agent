@@ -89,6 +89,7 @@ async def run(
     start_time = time.monotonic()
     network_errors = 0               # consecutive infra-level failures (timeout, DNS, etc.)
     items_collected = 0              # count of save_progress calls (proxy for items done)
+    seen_screenshot_hashes: set[str] = set()  # detect duplicate screenshots
 
     # Navigate to starting URL if provided — fail fast if unreachable
     if sample.url:
@@ -242,7 +243,7 @@ async def run(
                 break
 
         # ---- 4. ACT ----
-        action_result = await _dispatch(action, page, snap, output_mgr)
+        action_result = await _dispatch(action, page, snap, output_mgr, seen_screenshot_hashes)
 
         result_desc = (action_result.description if action_result.success else action_result.error) or ""
 
@@ -524,6 +525,7 @@ async def _dispatch(
     page: Page,
     snap: dom_extractor.DOMSnapshot,
     output_mgr: OutputManager,
+    seen_screenshot_hashes: set[str] | None = None,
 ) -> ActionResult:
     """Execute one action. Always returns ActionResult, never raises."""
     try:
@@ -544,6 +546,17 @@ async def _dispatch(
         elif action.action == "screenshot":
             data = await browser.take_screenshot(page, full_page=True)
             artifact = output_mgr.save_screenshot(data, action.label or "page", page.url)
+            if seen_screenshot_hashes is not None and artifact.sha256 in seen_screenshot_hashes:
+                return ActionResult(
+                    success=True,
+                    description=(
+                        f"Screenshot saved: {artifact.filename} — but this is IDENTICAL to a previous screenshot "
+                        f"(same SHA256). You are still on the same page. Do NOT take another screenshot. "
+                        f"Navigate to a new page with goto, or call done/fail."
+                    ),
+                )
+            if seen_screenshot_hashes is not None:
+                seen_screenshot_hashes.add(artifact.sha256)
             return ActionResult(
                 success=True,
                 description=f"Screenshot saved: {artifact.filename} (sha256: {artifact.sha256[:12]}...)",
