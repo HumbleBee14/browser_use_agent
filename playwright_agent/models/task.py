@@ -32,6 +32,9 @@ class TaskSpec(BaseModel):
 
     # Limits
     max_steps: int = 25
+    max_time_seconds: int = 0              # wall-clock limit (0 = no limit)
+    expected_items: int = 0                # how many items to collect (0 = not applicable)
+    max_consecutive_network_errors: int = 5  # infra failures before graceful stop
 
     # Judgment (optional)
     judgment_required: bool = False

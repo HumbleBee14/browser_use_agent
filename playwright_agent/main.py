@@ -150,6 +150,7 @@ async def run_batch(
                 "done": "[bold green]DONE[/bold green]",
                 "failed": "[bold red]FAILED[/bold red]",
                 "needs_review": "[bold yellow]NEEDS REVIEW[/bold yellow]",
+                "partial_success": "[bold cyan]PARTIAL[/bold cyan]",
             }
             console.print(
                 f"  [{idx}/{len(pending)}] [cyan]{sample.sample_id}[/cyan] "
@@ -182,7 +183,7 @@ async def run_batch(
 
 def _print_summary(evidence_dir: Path, samples: list[SampleInput], duration: float, csv_path: Path):
     """Print batch summary table."""
-    done = failed = review = 0
+    done = failed = review = partial = 0
     for s in samples:
         result_path = evidence_dir / s.sample_id / "result.json"
         if result_path.exists():
@@ -190,6 +191,8 @@ def _print_summary(evidence_dir: Path, samples: list[SampleInput], duration: flo
             status = data.get("status", "failed")
             if status == "done":
                 done += 1
+            elif status == "partial_success":
+                partial += 1
             elif status == "needs_review":
                 review += 1
             else:
@@ -203,6 +206,7 @@ def _print_summary(evidence_dir: Path, samples: list[SampleInput], duration: flo
     table.add_column("Value")
     table.add_row("Total Samples", str(len(samples)))
     table.add_row("Done", str(done))
+    table.add_row("Partial Success", str(partial))
     table.add_row("Failed", str(failed))
     table.add_row("Needs Review", str(review))
     table.add_row("Duration", f"{duration:.1f}s")

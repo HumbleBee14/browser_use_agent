@@ -70,7 +70,7 @@ class SampleResult(BaseModel):
     """Complete output for one sample — written to result.json."""
 
     sample_id: str
-    status: Literal["done", "failed", "needs_review"] = "failed"
+    status: Literal["done", "failed", "needs_review", "partial_success"] = "failed"
     steps: int = 0
     extracted: dict[str, Any] = Field(default_factory=dict)
     artifacts: list[EvidenceArtifact] = Field(default_factory=list)

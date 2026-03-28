@@ -337,12 +337,44 @@ For tasks involving 10+ items with individual URLs (e.g., "extract all 200 org m
 
 This means a "200 org members" task becomes 200 parallel workers (bounded by concurrency limit), each doing a simple 3-5 step extraction — much faster and more reliable than one agent doing 500+ steps.
 
-### 7. Crash Recovery
+### 7. Smart Termination
 
-If the agent hits `max_steps` or crashes, accumulated data is **not lost**:
-- `checkpoint.json` has the latest checkpoint
-- `result.json` includes accumulated data (status: `failed`, but `extracted` has partial data)
-- `action_log.json` has the full step trace up to the crash point
+The agent doesn't just stop at `max_steps`. Multiple termination conditions are checked **before every step**:
+
+| Trigger | Status | Logic |
+|---------|--------|-------|
+| Agent calls `done` + all requirements met | `done` | Machine-verified fields + artifacts |
+| Agent calls `done` + array count < `expected_items` | `partial_success` | Got some but not all items |
+| Wall-clock timeout (`max_time_seconds`) | `partial_success` or `failed` | Real time limit for long-running tasks |
+| Network circuit breaker (5 consecutive infra errors) | `partial_success` or `failed` | Site down, DNS failure, browser crash |
+| Watchdog stall (5 steps, no new data) | warning injected | Agent gets hard nudge to produce data or stop |
+| `max_steps` exhausted | `failed` | Hard ceiling (accumulated data saved) |
+| LLM API error | `failed` | Claude unreachable |
+| Agent calls `fail(reason)` | `failed` | Agent gives up intentionally |
+
+**Infrastructure error detection** classifies errors as infra (timeout, DNS, connection refused, page crashed, SSL) vs logic (element not found, click failed). Only infra errors count toward the circuit breaker — a click failing because the wrong selector was used does NOT trigger early termination.
+
+**`partial_success` status** — when the agent collected some data but couldn't finish (e.g., 4 of 5 PRs audited, then the 5th page 404'd), the result is `partial_success` not `failed`. The accumulated data is preserved in `result.json`.
+
+**`expected_items`** — task specs can set `expected_items: 5`. When `save_progress` is called 5 times, the agent gets a nudge: "All items collected. Call done now." The final `done` validation also checks array lengths against this count.
+
+New task spec fields:
+
+```json
+{
+  "max_steps": 50,
+  "max_time_seconds": 300,
+  "expected_items": 5,
+  "max_consecutive_network_errors": 5
+}
+```
+
+### 8. Crash Recovery
+
+If the agent hits any termination condition, accumulated data is **not lost**:
+- `checkpoint.json` has the latest checkpoint (written on every termination)
+- `result.json` includes accumulated data (with appropriate status)
+- `action_log.json` has the full step trace up to the termination point
 
 ### Test Cases
 

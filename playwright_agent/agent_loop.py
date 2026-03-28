@@ -23,6 +23,7 @@ Long-horizon support:
 from __future__ import annotations
 
 import json
+import time
 from datetime import datetime
 
 from anthropic import AsyncAnthropic
@@ -84,6 +85,11 @@ async def run(
     last_data_step = 0               # last step that produced new data
     pagination_bonus = 0             # extra steps granted for pagination
 
+    # Smart termination state
+    start_time = time.monotonic()
+    network_errors = 0               # consecutive infra-level failures (timeout, DNS, etc.)
+    items_collected = 0              # count of save_progress calls (proxy for items done)
+
     # Navigate to starting URL if provided — fail fast if unreachable
     if sample.url:
         result = await browser.goto(page, sample.url)
@@ -102,6 +108,33 @@ async def run(
     for step in range(1, task_spec.max_steps + 200):  # hard ceiling with pagination bonus
         if step > effective_max:
             break
+
+        # ---- 0. SMART TERMINATION CHECKS (before each step) ----
+        elapsed = time.monotonic() - start_time
+        termination = _check_termination(
+            step=step,
+            elapsed=elapsed,
+            task_spec=task_spec,
+            accumulated=accumulated,
+            items_collected=items_collected,
+            network_errors=network_errors,
+            effective_max=effective_max,
+            log=log,
+        )
+        if termination:
+            status, reason = termination
+            log.warning(f"Smart termination | status={status} | {reason}")
+            if accumulated:
+                output_mgr.write_checkpoint(step, accumulated, progress_notes, status=status)
+            output_mgr.write_result(
+                status=status,
+                extracted=accumulated or {},
+                errors=[reason],
+                notes=progress_notes,
+                steps=step,
+            )
+            return
+
         # ---- 1. OBSERVE ----
         snap = await dom_extractor.snapshot(page, task_spec.keywords)
         page_state = dom_extractor.serialize(snap)
@@ -237,19 +270,43 @@ async def run(
         if action_result.extracted_text:
             progress["fields_found"].append(action_result.extracted_text[:50])
 
+        # ---- NETWORK ERROR TRACKING ----
+        if not action_result.success and _is_infra_error(action_result.error or ""):
+            network_errors += 1
+            log.warning(f"Step {step} | Network error #{network_errors}: {action_result.error[:100]}")
+        elif action_result.success:
+            network_errors = 0  # reset on any successful action
+
         # ---- SAVE_PROGRESS: checkpoint partial data without stopping ----
         if action.action == "save_progress":
             partial = action.extracted or {}
             _deep_merge(accumulated, partial)
             note = action.note or f"Checkpoint at step {step}"
             progress_notes.append(note)
-            log.info(f"Step {step} | save_progress | {note} | keys={list(partial.keys())}")
+            items_collected += 1
+            log.info(f"Step {step} | save_progress #{items_collected} | {note} | keys={list(partial.keys())}")
             output_mgr.write_checkpoint(step, accumulated, progress_notes)
-            history.append({
-                "step": step,
-                "action": "system_notice",
-                "result": f"Progress saved. You have {task_spec.max_steps - step} steps remaining. Keep going.",
-            })
+
+            # Check if we've collected the expected number of items
+            if task_spec.expected_items > 0 and items_collected >= task_spec.expected_items:
+                log.info(f"Step {step} | Expected items reached ({items_collected}/{task_spec.expected_items})")
+                history.append({
+                    "step": step,
+                    "action": "system_notice",
+                    "result": (
+                        f"You have collected {items_collected} of {task_spec.expected_items} expected items. "
+                        f"All items collected. Call done now with the complete data."
+                    ),
+                })
+            else:
+                remaining_items = ""
+                if task_spec.expected_items > 0:
+                    remaining_items = f" ({items_collected}/{task_spec.expected_items} items)"
+                history.append({
+                    "step": step,
+                    "action": "system_notice",
+                    "result": f"Progress saved{remaining_items}. You have {effective_max - step} steps remaining. Keep going.",
+                })
             consecutive_failures = 0
             continue
 
@@ -347,9 +404,22 @@ async def run(
                     if k in extracted
                 }
 
-            log.info(f"Completed | status=done | steps={step} | fields={len(extracted)}")
+            # Determine final status — check expected_items completeness
+            final_status = "done"
+            completion_notes = list(progress_notes)
+            if task_spec.expected_items > 0:
+                for val in extracted.values():
+                    if isinstance(val, list) and len(val) < task_spec.expected_items:
+                        final_status = "partial_success"
+                        completion_notes.append(
+                            f"Expected {task_spec.expected_items} items but collected {len(val)}"
+                        )
+                        break
+
+            log.info(f"Completed | status={final_status} | steps={step} | fields={len(extracted)} | items={items_collected}")
             output_mgr.write_result(
-                status="done", extracted=extracted, judgment=judgment or None,
+                status=final_status, extracted=extracted, judgment=judgment or None,
+                notes=completion_notes,
                 steps=step,
             )
             return
@@ -490,6 +560,61 @@ def _is_pagination_click(selector: str, result_desc: str) -> bool:
     """Detect if a click was a pagination action (next page, load more, etc.)."""
     combined = f"{selector} {result_desc}".lower()
     return any(kw in combined for kw in PAGINATION_KEYWORDS)
+
+
+INFRA_ERROR_PATTERNS = [
+    "timeout", "net::err", "dns", "connection refused", "connection reset",
+    "network error", "err_connection", "err_name_not_resolved",
+    "err_internet_disconnected", "page crashed", "target closed",
+    "browser has been closed", "navigation error", "ssl",
+]
+
+
+def _is_infra_error(error_text: str) -> bool:
+    """Distinguish infrastructure errors (network, browser) from logic errors (element not found)."""
+    lower = error_text.lower()
+    return any(p in lower for p in INFRA_ERROR_PATTERNS)
+
+
+def _check_termination(
+    step: int,
+    elapsed: float,
+    task_spec,
+    accumulated: dict,
+    items_collected: int,
+    network_errors: int,
+    effective_max: int,
+    log,
+) -> tuple[str, str] | None:
+    """Check if the agent should stop early for a smart reason.
+
+    Returns (status, reason) if termination needed, None to continue.
+    """
+    # 1. Wall-clock timeout
+    if task_spec.max_time_seconds > 0 and elapsed > task_spec.max_time_seconds:
+        has_data = bool(accumulated)
+        status = "partial_success" if has_data else "failed"
+        return status, f"Wall-clock timeout ({elapsed:.0f}s > {task_spec.max_time_seconds}s limit)"
+
+    # 2. Network circuit breaker — too many consecutive infra failures
+    limit = task_spec.max_consecutive_network_errors
+    if network_errors >= limit:
+        has_data = bool(accumulated)
+        status = "partial_success" if has_data else "failed"
+        return status, f"Network circuit breaker: {network_errors} consecutive infrastructure errors"
+
+    # 3. Expected items reached via accumulated data (belt+suspenders with save_progress check)
+    if task_spec.expected_items > 0 and items_collected >= task_spec.expected_items:
+        for array_field in accumulated.values():
+            if isinstance(array_field, list) and len(array_field) >= task_spec.expected_items:
+                return None  # let the agent call done naturally — it already got the nudge
+
+    # 4. Near step budget with accumulated data — warn but don't terminate
+    remaining = effective_max - step
+    if remaining == 5 and accumulated:
+        log.info(f"Step {step} | 5 steps remaining with accumulated data — agent should wrap up soon")
+
+    return None
 
 
 def _deep_merge(base: dict, update: dict) -> None:
