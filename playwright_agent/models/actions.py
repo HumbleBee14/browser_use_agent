@@ -6,7 +6,7 @@ No free-form prose. If it can't proceed, it returns "fail" with a note.
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field
@@ -54,7 +54,7 @@ class StepRecord(BaseModel):
     params: dict[str, Any] = Field(default_factory=dict)
     result: str = ""
     url: str = ""
-    timestamp: str = Field(default_factory=lambda: datetime.utcnow().isoformat() + "Z")
+    timestamp: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
 
 class EvidenceArtifact(BaseModel):
@@ -63,7 +63,7 @@ class EvidenceArtifact(BaseModel):
     filename: str
     sha256: str
     source_url: str
-    timestamp: str = Field(default_factory=lambda: datetime.utcnow().isoformat() + "Z")
+    timestamp: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
 
 class SampleResult(BaseModel):

@@ -17,7 +17,7 @@ import csv
 import json
 import shutil
 import sys
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
@@ -156,7 +156,7 @@ async def discover(
                 row = {
                     "sample_id": s.sample_id,
                     "url": s.url,
-                    "discovered_at": datetime.utcnow().isoformat() + "Z",
+                    "discovered_at": datetime.now(timezone.utc).isoformat(),
                     **s.extra,
                 }
                 writer.writerow(row)

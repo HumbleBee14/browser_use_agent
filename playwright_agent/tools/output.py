@@ -9,7 +9,7 @@ from __future__ import annotations
 import csv
 import hashlib
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 from models.actions import EvidenceArtifact, SampleResult, StepRecord
@@ -30,7 +30,7 @@ class OutputManager:
         self._counter = 0
         self._artifacts: list[EvidenceArtifact] = []
         self._action_log: list[StepRecord] = []
-        self._started_at = datetime.utcnow().isoformat() + "Z"
+        self._started_at = datetime.now(timezone.utc).isoformat()
 
     def save_screenshot(self, data: bytes, label: str, source_url: str) -> EvidenceArtifact:
         """Save screenshot with sequential naming and SHA-256 hash."""
@@ -122,7 +122,7 @@ class OutputManager:
             "artifacts_so_far": [a.model_dump() for a in self._artifacts],
             "steps_logged": len(self._action_log),
             "started_at": self._started_at,
-            "updated_at": datetime.utcnow().isoformat() + "Z",
+            "updated_at": datetime.now(timezone.utc).isoformat(),
         }
         path = self.sample_dir / "checkpoint.json"
         self._write_json_atomic(path, json.dumps(checkpoint, indent=2, default=str))
@@ -148,7 +148,7 @@ class OutputManager:
             notes=notes or [],
             errors=errors or [],
             started_at=self._started_at,
-            finished_at=datetime.utcnow().isoformat() + "Z",
+            finished_at=datetime.now(timezone.utc).isoformat(),
         )
 
         # Write both files atomically: write to .tmp then rename.

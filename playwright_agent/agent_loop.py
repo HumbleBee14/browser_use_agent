@@ -22,11 +22,24 @@ Long-horizon support:
 
 from __future__ import annotations
 
+import asyncio
 import json
 import time
-from datetime import datetime
 
-from anthropic import AsyncAnthropic
+from anthropic import (
+    APIConnectionError,
+    APIResponseValidationError,
+    APITimeoutError,
+    AsyncAnthropic,
+    AuthenticationError,
+    BadRequestError,
+    ConflictError,
+    InternalServerError,
+    NotFoundError,
+    PermissionDeniedError,
+    RateLimitError,
+    UnprocessableEntityError,
+)
 from playwright.async_api import Page
 
 import config
@@ -151,10 +164,9 @@ async def run(
         if termination:
             status, reason = termination
             log.warning(f"Smart termination | status={status} | {reason}")
-            if accumulated:
-                output_mgr.write_checkpoint(
-                    step, accumulated, progress_notes, max_steps=effective_max, status=status
-                )
+            output_mgr.write_checkpoint(
+                step, accumulated or {}, progress_notes, max_steps=effective_max, status=status
+            )
             output_mgr.write_result(
                 status=status,
                 extracted=accumulated or {},
@@ -170,7 +182,13 @@ async def run(
             return
 
         # ---- 1. OBSERVE ----
-        snap = await dom_extractor.snapshot(page, task_spec.keywords)
+        try:
+            snap = await dom_extractor.snapshot(page, task_spec.keywords)
+        except Exception as e:
+            log.warning(f"Step {step} | DOM snapshot failed: {str(e)[:150]}")
+            snap = dom_extractor.DOMSnapshot(
+                url=page.url, title="", confidence=0.0, raw_text=f"snapshot error: {str(e)[:100]}"
+            )
         page_state = dom_extractor.serialize(snap)
 
         log.debug(f"Step {step} | DOM confidence={snap.confidence:.2f} | nodes={len(snap.nodes)}")
@@ -205,6 +223,7 @@ async def run(
             step_summaries=step_summaries,
             current_step=step,
             memory_hints=memory_hints,
+            effective_max=effective_max,
         )
 
         # Log everything going into the LLM call — full context for debugging
@@ -219,30 +238,55 @@ async def run(
         if vision_text:
             log.debug(f"Step {step} vision | {vision_text[:300]}")
 
-        # ---- 3. DECIDE (LLM call with prompt caching) ----
-        # System prompt + tools are static across all steps → cache them
-        try:
-            response = await client.messages.create(
-                model=config.LLM_MODEL,
-                max_tokens=1024,
-                system=[{
-                    "type": "text",
-                    "text": task_spec.system_prompt,
-                    "cache_control": {"type": "ephemeral"},
-                }],
-                messages=messages,
-                tools=tools,
-                tool_choice={"type": "any"},  # forces structured output — never prose
-            )
-        except Exception as e:
-            log.error(f"Step {step} | LLM error: {str(e)[:200]}")
-            output_mgr.log_step(StepRecord(
-                step=step, action="llm_error", result=str(e)[:200], url=page.url,
-            ))
-            output_mgr.write_result(
-                status="failed", errors=[f"LLM error: {str(e)[:200]}"], steps=step,
-            )
-            return
+        # ---- 3. DECIDE (LLM call with prompt caching + retry) ----
+        LLM_MAX_RETRIES = 3
+        response = None
+        for attempt in range(1, LLM_MAX_RETRIES + 1):
+            try:
+                response = await client.messages.create(
+                    model=config.LLM_MODEL,
+                    max_tokens=1024,
+                    system=[{
+                        "type": "text",
+                        "text": task_spec.system_prompt,
+                        "cache_control": {"type": "ephemeral"},
+                    }],
+                    messages=messages,
+                    tools=tools,
+                    tool_choice={"type": "any"},
+                )
+                break
+            except Exception as e:
+                log.warning(f"Step {step} | LLM attempt {attempt}/{LLM_MAX_RETRIES} failed: {str(e)[:150]}")
+                retryable = _is_retryable_llm_error(e)
+                if retryable and attempt < LLM_MAX_RETRIES:
+                    await asyncio.sleep(2 ** attempt)
+                else:
+                    log.error(f"Step {step} | LLM failed after {LLM_MAX_RETRIES} retries: {str(e)[:200]}")
+                    output_mgr.log_step(StepRecord(
+                        step=step, action="llm_error", result=str(e)[:200], url=page.url,
+                    ))
+                    final_status = "failed" if not accumulated else "partial_success"
+                    output_mgr.write_checkpoint(
+                        step, accumulated or {}, progress_notes, max_steps=effective_max, status="llm_error"
+                    )
+                    output_mgr.write_result(
+                        status=final_status,
+                        extracted=accumulated or {},
+                        errors=[f"LLM error after {LLM_MAX_RETRIES} retries: {str(e)[:200]}"],
+                        steps=step,
+                    )
+                    if sample.url:
+                        try:
+                            memory.learn_failures(
+                                sample.url, progress, final_status, reason=f"LLM error: {str(e)[:100]}"
+                            )
+                        except Exception:
+                            pass
+                    return
+
+        if response is None:
+            continue
 
         # Extract the tool call from response
         tool_block = next(
@@ -280,8 +324,18 @@ async def run(
                 thinking = block.text[:300]
                 break
 
-        # ---- 4. ACT ----
-        action_result = await _dispatch(action, page, snap, output_mgr, seen_screenshot_hashes)
+        # ---- 4. ACT (with per-step timeout to prevent hung workers) ----
+        ACTION_TIMEOUT = 60  # seconds — generous ceiling for any single browser action
+        try:
+            action_result = await asyncio.wait_for(
+                _dispatch(action, page, snap, output_mgr, seen_screenshot_hashes),
+                timeout=ACTION_TIMEOUT,
+            )
+        except asyncio.TimeoutError:
+            log.warning(f"Step {step} | Action '{action.action}' timed out after {ACTION_TIMEOUT}s")
+            action_result = ActionResult(
+                success=False, error=f"Action timed out after {ACTION_TIMEOUT}s"
+            )
 
         result_desc = (action_result.description if action_result.success else action_result.error) or ""
 
@@ -479,7 +533,7 @@ async def run(
                     notice_parts.append(f"Required artifacts missing: {missing_artifacts}")
                 log.warning(f"Step {step} | Incomplete done: {'; '.join(notice_parts)}")
 
-                if step < task_spec.max_steps:
+                if step < effective_max:
                     # Bounce back — force agent to try again
                     history.append({
                         "step": step,
@@ -490,6 +544,9 @@ async def run(
                     continue
                 else:
                     # Last step — cannot retry. Write needs_review, not done.
+                    output_mgr.write_checkpoint(
+                        step, extracted or {}, progress_notes, max_steps=effective_max, status="needs_review"
+                    )
                     output_mgr.write_result(
                         status="needs_review", extracted=extracted,
                         errors=notice_parts, steps=step,
@@ -497,6 +554,7 @@ async def run(
                     return
 
             # Extract judgment if present
+            checkpoint_payload = dict(extracted)
             judgment = None
             if task_spec.judgment_required and task_spec.judgment_output_schema:
                 judgment = {
@@ -521,6 +579,9 @@ async def run(
                     )
 
             log.info(f"Completed | status={final_status} | steps={step} | fields={len(extracted)} | items={items_collected}")
+            output_mgr.write_checkpoint(
+                step, checkpoint_payload, progress_notes, max_steps=effective_max, status=final_status
+            )
             output_mgr.write_result(
                 status=final_status, extracted=extracted, judgment=judgment or None,
                 notes=completion_notes,
@@ -549,6 +610,9 @@ async def run(
 
         if action.action == "fail":
             log.warning(f"Failed | reason={action.note} | steps={step}")
+            output_mgr.write_checkpoint(
+                step, accumulated or {}, progress_notes, max_steps=effective_max, status="failed"
+            )
             output_mgr.write_result(
                 status="failed",
                 errors=[action.note or "Agent called fail"],
@@ -624,16 +688,24 @@ async def run(
 
     # Exhausted max_steps without done/fail
     log.warning(f"Exhausted {effective_max} steps (base={task_spec.max_steps}, pagination_bonus={pagination_bonus})")
-    if accumulated:
-        output_mgr.write_checkpoint(
-            step, accumulated, progress_notes, max_steps=effective_max, status="max_steps_exceeded"
-        )
+    output_mgr.write_checkpoint(
+        step, accumulated or {}, progress_notes, max_steps=effective_max, status="max_steps_exceeded"
+    )
+    final_status = "partial_success" if accumulated else "failed"
     output_mgr.write_result(
-        status="failed",
+        status=final_status,
         extracted=accumulated or {},
         errors=[f"Exhausted {effective_max} steps without completing (base={task_spec.max_steps}, bonus={pagination_bonus})"],
         steps=step,
     )
+    if sample.url:
+        try:
+            memory.learn_failures(
+                sample.url, progress, final_status,
+                reason=f"Exhausted {effective_max} steps",
+            )
+        except Exception:
+            pass
 
 
 async def _dispatch(
@@ -701,6 +773,63 @@ async def _dispatch(
 
     except Exception as e:
         return ActionResult(success=False, error=f"Dispatch error: {str(e)[:200]}")
+
+
+RETRYABLE_LLM_EXCEPTIONS = (
+    APITimeoutError,
+    APIConnectionError,
+    RateLimitError,
+    InternalServerError,
+    ConflictError,
+)
+
+NON_RETRYABLE_LLM_EXCEPTIONS = (
+    BadRequestError,
+    AuthenticationError,
+    PermissionDeniedError,
+    NotFoundError,
+    UnprocessableEntityError,
+    APIResponseValidationError,
+)
+
+
+def _is_retryable_llm_error(exc: Exception) -> bool:
+    """Return True only for transient LLM failures worth retrying."""
+    if isinstance(exc, RETRYABLE_LLM_EXCEPTIONS):
+        return True
+    if isinstance(exc, NON_RETRYABLE_LLM_EXCEPTIONS):
+        return False
+
+    text = str(exc).lower()
+    non_retryable_patterns = (
+        "prompt is too long",
+        "maximum context length",
+        "invalid request",
+        "tool schema",
+        "authentication",
+        "api key",
+        "permission",
+        "not found",
+        "unprocessable",
+    )
+    if any(pattern in text for pattern in non_retryable_patterns):
+        return False
+
+    retryable_patterns = (
+        "timed out",
+        "timeout",
+        "rate limit",
+        "429",
+        "connection error",
+        "connection reset",
+        "temporarily unavailable",
+        "service unavailable",
+        "overloaded",
+        "502",
+        "503",
+        "504",
+    )
+    return any(pattern in text for pattern in retryable_patterns)
 
 
 PAGINATION_KEYWORDS = frozenset({
@@ -923,6 +1052,7 @@ def _build_messages(
     step_summaries: list[str] | None = None,
     current_step: int = 0,
     memory_hints: str | None = None,
+    effective_max: int | None = None,
 ) -> list[dict]:
     """Build the message list for the LLM call.
 
@@ -943,10 +1073,11 @@ def _build_messages(
     if vision_text:
         parts.append(f"\n## Visual analysis (DOM was insufficient)\n{vision_text}")
 
-    # Step budget awareness
+    # Step budget awareness (use effective_max which includes pagination bonus)
+    budget = effective_max if effective_max else task_spec.max_steps
     if current_step > 0:
-        remaining = task_spec.max_steps - current_step
-        parts.append(f"\n**Step {current_step} of {task_spec.max_steps}** ({remaining} remaining)")
+        remaining = budget - current_step
+        parts.append(f"\n**Step {current_step} of {budget}** ({remaining} remaining)")
 
     # Accumulated data from save_progress calls (long-term memory)
     if accumulated:

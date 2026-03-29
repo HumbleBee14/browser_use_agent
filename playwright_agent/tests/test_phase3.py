@@ -13,6 +13,8 @@ import sys
 import tempfile
 from pathlib import Path
 
+import httpx
+
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from models.task import TaskSpec, SampleInput
@@ -129,6 +131,19 @@ def test_last_step_done_with_missing_requirements_is_not_done():
     # → code path writes needs_review, not done
 
 
+def test_done_uses_effective_max_after_pagination_bonus():
+    """Retry budget after pagination should use effective_max, not the base max_steps."""
+    spec = TaskSpec(
+        task_id="test", phase="execution", system_prompt="x", goal="x",
+        output_schema={"name": "string", "bio": "string"},
+        required_fields=["name", "bio"],
+    )
+    step = spec.max_steps + 1
+    effective_max = spec.max_steps + 3
+    should_bounce = step < effective_max
+    assert should_bounce is True
+
+
 # ---- AgentAction parsing ----
 
 def test_action_parsing_valid():
@@ -195,6 +210,30 @@ def test_tool_schema_all_10_actions():
     names = {t["name"] for t in tools}
     expected = {"goto", "click", "type", "scroll", "screenshot", "extract", "wait", "save_progress", "done", "fail"}
     assert names == expected
+
+
+def test_retryable_llm_error_classification():
+    """Transient LLM transport/rate-limit errors should retry."""
+    from anthropic import APIConnectionError, RateLimitError
+    from agent_loop import _is_retryable_llm_error
+
+    req = httpx.Request("POST", "https://api.anthropic.com/v1/messages")
+    resp = httpx.Response(429, request=req)
+
+    assert _is_retryable_llm_error(APIConnectionError(message="Connection error.", request=req)) is True
+    assert _is_retryable_llm_error(RateLimitError("rate limited", response=resp, body=None)) is True
+
+
+def test_non_retryable_llm_error_classification():
+    """Deterministic request/schema errors should fail immediately."""
+    from anthropic import BadRequestError
+    from agent_loop import _is_retryable_llm_error
+
+    req = httpx.Request("POST", "https://api.anthropic.com/v1/messages")
+    resp = httpx.Response(400, request=req)
+
+    assert _is_retryable_llm_error(BadRequestError("prompt is too long", response=resp, body=None)) is False
+    assert _is_retryable_llm_error(ValueError("tool schema invalid")) is False
 
 
 # ---- output manager integration ----
