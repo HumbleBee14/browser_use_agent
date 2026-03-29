@@ -94,10 +94,11 @@ async def run(
     consecutive_failures = 0
     step = 0
 
-    # Long-term memory: retrieve navigation hints for this domain
-    memory_hints = memory.get_hints(sample.url) if sample.url else None
+    # Long-term memory: retrieve navigation hints filtered by task relevance
+    memory_hints = memory.get_hints(sample.url, goal=task_spec.goal) if sample.url else None
     if memory_hints:
         log.info(f"Memory loaded | domain hints available ({len(memory_hints)} chars)")
+        memory.record_usage(sample.url, goal=task_spec.goal)
 
     # Long-horizon state
     accumulated: dict = {}           # merged data from save_progress calls
@@ -832,12 +833,14 @@ def _fit_history(full_history: list[dict], fixed_tokens: int) -> list[dict]:
     """Dynamically select history items that fit within the token budget.
 
     Strategy (hybrid approach from industry best practices):
-    1. Calculate remaining token budget after fixed costs (DOM, vision, goal, etc.)
-    2. Always include the last MIN_HISTORY_ITEMS (recency matters most)
-    3. For older items, score by importance and include highest-value ones first
-    4. Stop when budget is exhausted or MAX_HISTORY_ITEMS reached
+    1. Subtract fixed_tokens (DOM, vision, goal, summaries, etc.) from total budget
+    2. Allocate HISTORY_TOKEN_SHARE of the *remaining* space to history
+    3. Always include the last MIN_HISTORY_ITEMS (recency matters most)
+    4. For older items, score by importance and include highest-value ones first
+    5. Stop when budget is exhausted or MAX_HISTORY_ITEMS reached
     """
-    budget = max(500, int(PROMPT_TOKEN_BUDGET * HISTORY_TOKEN_SHARE))
+    remaining_capacity = max(0, PROMPT_TOKEN_BUDGET - fixed_tokens)
+    budget = max(500, int(remaining_capacity * HISTORY_TOKEN_SHARE))
 
     if not full_history:
         return []

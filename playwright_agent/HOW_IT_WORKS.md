@@ -317,7 +317,7 @@ Detection is keyword-based: `next`, `next page`, `load more`, `show more`, `olde
 
 ### 5. Watchdog (Stall Detection)
 
-If the agent hasn't produced new data (no `save_progress`, `extract`, or `screenshot`) for 5 consecutive steps, the watchdog injects a warning:
+If the agent hasn't produced new data (no `save_progress` with genuinely new data, or successful `extract`) for 5 consecutive steps, the watchdog injects a warning:
 
 ```
 WARNING: You have not produced new data in 5 steps. You have 12 steps left.

@@ -1,6 +1,6 @@
 # Long-Horizon Task Support
 
-**Branch:** `long-horizon-test`
+**Branch:** `long-horizon-test` (will merge to `main`)
 
 ---
 
@@ -111,7 +111,7 @@ Step 15 | click("Next page") → Pagination detected → +3 bonus (effective_max
 
 **Watchdog (stall detection):**
 
-If 5 consecutive steps produce no new data (no `save_progress`, `extract`, or `screenshot`), the watchdog injects:
+If 5 consecutive steps produce no new data (no `save_progress` with genuinely new data, or successful `extract`), the watchdog injects:
 
 ```
 WARNING: You have not produced new data in 5 steps.

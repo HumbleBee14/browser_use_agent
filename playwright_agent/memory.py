@@ -75,11 +75,14 @@ class MemoryStore:
     def _save_failures(self) -> None:
         self._save_file(self._failures, self.failures_file)
 
-    def get_hints(self, url: str) -> str | None:
-        """Retrieve navigation hints for a URL's domain.
+    def get_hints(self, url: str, goal: str = "") -> str | None:
+        """Retrieve navigation hints for a URL's domain, filtered by task relevance.
 
-        Returns a compact text block combining success patterns and failure
-        warnings, or None if no memories exist for this domain.
+        When a goal is provided, patterns whose task_type appears in the goal
+        text are ranked first. This prevents a stargazer pattern from bleeding
+        into a commit-audit run on the same domain.
+
+        Pure read — no side effects on stored data.
         """
         domain = urlparse(url).netloc
         patterns = self._patterns.get(domain, [])
@@ -91,9 +94,10 @@ class MemoryStore:
         parts: list[str] = []
 
         if patterns:
+            ranked = self._rank_patterns(patterns, goal)
             parts.append(f"## Navigation memory for {domain}")
-            parts.append(f"(from {len(patterns)} previous successful run{'s' if len(patterns) > 1 else ''})\n")
-            for p in patterns:
+            parts.append(f"(from {len(ranked)} previous successful run{'s' if len(ranked) > 1 else ''})\n")
+            for p in ranked:
                 parts.append(f"**{p.get('task_type', 'task')}** ({p.get('avg_steps', '?')} steps avg)")
                 seq = p.get("action_sequence", [])
                 if seq:
@@ -104,13 +108,9 @@ class MemoryStore:
                     parts.append(f"⚠ Avoid: {avoid}")
                 parts.append("")
 
-            for p in patterns:
-                p["uses"] = p.get("uses", 0) + 1
-            self._save()
-
         if failures:
             parts.append(f"## Known issues on {domain} (from past failures)")
-            for f in failures[-3:]:  # cap at 3 most recent
+            for f in failures[-3:]:
                 if f.get("failed_urls"):
                     parts.append(f"Dead URLs (skip): {', '.join(f['failed_urls'][:5])}")
                 if f.get("blocked_selectors"):
@@ -122,6 +122,37 @@ class MemoryStore:
             parts.append("")
 
         return "\n".join(parts) if parts else None
+
+    def record_usage(self, url: str, goal: str = "") -> None:
+        """Increment usage counters for patterns served. Call after a run starts."""
+        domain = urlparse(url).netloc
+        patterns = self._patterns.get(domain, [])
+        if not patterns:
+            return
+        for p in self._rank_patterns(patterns, goal):
+            p["uses"] = p.get("uses", 0) + 1
+        self._save()
+
+    @staticmethod
+    def _rank_patterns(patterns: list[dict], goal: str) -> list[dict]:
+        """Rank patterns by relevance to the current goal.
+
+        Patterns whose task_type keywords appear in the goal are placed first.
+        Others are still included (they may have useful site-level tips) but
+        ranked lower.
+        """
+        if not goal:
+            return patterns
+
+        goal_lower = goal.lower()
+
+        def _relevance(p: dict) -> int:
+            task_type = p.get("task_type", "").lower().replace("_", " ")
+            if not task_type:
+                return 0
+            return sum(1 for word in task_type.split() if word in goal_lower)
+
+        return sorted(patterns, key=_relevance, reverse=True)
 
     def learn_failures(
         self,

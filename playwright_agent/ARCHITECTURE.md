@@ -14,7 +14,7 @@ A site-agnostic browser agent that discovers sample lists by navigating any web 
 
 ## Table of Contents
 
-1. [What Andera Asked](#1-what-andera-asked)
+1. [Project Requirements](#1-project-requirements)
 2. [Task Analysis](#2-task-analysis)
 3. [Repository Structure](#3-repository-structure)
 4. [System Overview](#4-system-overview)
@@ -32,9 +32,9 @@ A site-agnostic browser agent that discovers sample lists by navigating any web 
 
 ---
 
-## 1. What Andera Asked
+## 1. Project Requirements
 
-Andera AI is building a **General Browser Agent** for audit evidence collection. Auditors manually navigate client systems (Workday, GitHub, Jira, LinkedIn), take screenshots, extract data into spreadsheets, and download artifacts. This agent automates that workflow.
+This is a **General Browser Agent** for audit and compliance evidence collection. Auditors manually navigate client systems (Workday, GitHub, Jira, LinkedIn), take screenshots, extract data into spreadsheets, and download artifacts. This agent automates that workflow.
 
 ### Requirements
 
@@ -781,7 +781,7 @@ httpx>=0.27
 
 | Package | Why Excluded |
 |---------|-------------|
-| `browser-use` | Andera explicitly requires custom agent loop |
+| `browser-use` | Project requires custom agent loop — no agent frameworks |
 | `langchain` | Unnecessary abstraction |
 | `selenium` | Playwright is async-native, more reliable |
 | `beautifulsoup4` | DOM via a11y tree, not HTML parsing |
