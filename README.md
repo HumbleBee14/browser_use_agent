@@ -370,12 +370,10 @@ The design is informed by recent research on long-horizon web agents:
 - **[CoALA](https://openreview.net/forum?id=1i6ZCvflQJ)** (Princeton, TMLR 2024) — modular memory architecture (working, episodic, procedural)
 - **[Lost in the Middle](http://export.arxiv.org/abs/2307.03172)** (Stanford, 2023) — prompt fill below 20% of context window
 - **[ReSum](https://arxiv.org/abs/2509.13313)** (Alibaba, 2025) — structured goal-oriented summaries for long exploration
-- **[BrowserUse + Mem0](https://mem0.ai/blog)** — procedural memory for 98% task completion, 41% cost reduction
-- **[browser-use](https://github.com/browser-use/browser-use)** — structured self-evaluation, escalating recovery, multi-action batching
 
 ---
 
-## Detailed Documentation
+## Documentation
 
 | Document | Description |
 |----------|-------------|
@@ -398,7 +396,6 @@ The design is informed by recent research on long-horizon web agents:
 | Logging | `loguru` | Per-sample structured logs (human + JSONL) |
 | Progress | `rich` | Live terminal dashboard |
 
-**What's excluded (intentionally):** browser-use, LangChain, Selenium, BeautifulSoup — the project requirement is a custom agent loop with no framework dependencies.
 
 ---
 
