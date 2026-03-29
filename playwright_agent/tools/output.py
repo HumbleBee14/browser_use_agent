@@ -9,6 +9,7 @@ from __future__ import annotations
 import csv
 import hashlib
 import json
+import re
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -53,7 +54,6 @@ class OutputManager:
 
         Filename is sanitized to prevent path traversal or overwriting artifacts.
         """
-        import re
         # Strip path components and dangerous characters
         safe_name = Path(filename).name  # remove any directory components
         safe_name = re.sub(r'[^\w\-.]', '_', safe_name)  # only alphanum, dash, dot

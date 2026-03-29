@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from playwright.async_api import Page
 
 from core import dom_extractor
@@ -63,6 +65,29 @@ async def dispatch(
 
         if action.action == "wait":
             return await browser.wait_for(page, action.selector or "")
+
+        if action.action == "download":
+            result = await browser.download_file(page, action.selector or "", snap.element_map)
+            if result.success and result.download_path:
+                # Save the downloaded file to evidence folder
+                temp_path = Path(result.download_path)
+                if temp_path.exists():
+                    data = temp_path.read_bytes()
+                    suggested_name = result.download_name or temp_path.name
+                    artifact = output_mgr.save_download(data, suggested_name, page.url)
+                    return ActionResult(
+                        success=True,
+                        description=(
+                            f"Downloaded: {artifact.filename} "
+                            f"({len(data)} bytes, sha256: {artifact.sha256[:12]}...)"
+                        ),
+                    )
+            return result
+
+        if action.action == "select_option":
+            return await browser.select_option(
+                page, action.selector or "", action.value or "", snap.element_map,
+            )
 
         if action.action == "save_progress":
             return ActionResult(success=True, description="Progress checkpointed")

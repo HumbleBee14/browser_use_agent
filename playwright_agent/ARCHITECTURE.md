@@ -163,14 +163,14 @@ playwright_agent/
 │       ├── memory/
 │       │   ├── patterns.json      # learned only within this run
 │       │   └── failures.json      # failure warnings only within this run
+│       ├── samples.csv            # optional manual discovery output
+│       ├── discovered_samples.csv # planner-driven discovery output
 │       ├── combined.csv
 │       └── {sample_id}/
 │           ├── 01_{label}.png
 │           ├── result.json        # extracted fields + artifact manifest
 │           └── action_log.json    # every step: thinking, action, outcome
 │
-├── samples.csv              # written by discover.py, consumed by main.py
-├── combined.csv             # merged at end of run
 ├── .env                     # ANTHROPIC_API_KEY, credentials
 └── requirements.txt
 ```
@@ -187,15 +187,15 @@ playwright_agent/
 Phase 1: DISCOVERY (sequential, one browser)
   "Go to github.com/orgs/microsoft/people"
       → agent navigates, paginates, collects member URLs
-      → writes samples.csv (the work queue)
+      → writes a run-local samples file (the work queue)
 
 Phase 2: EXECUTION (parallel, N browsers)
-  For each row in samples.csv:
+  For each row in the run-local samples file:
       → worker launches isolated BrowserContext
       → agent_loop runs the task spec against that sample
       → writes evidence/{sample_id}/result.json + screenshots
   After all workers:
-      → merge all result.json → combined.csv
+      → merge all result.json → run-local combined.csv
 ```
 
 ### Data Flow
@@ -405,7 +405,7 @@ USER (rebuilt every turn):
   Take the single best next action.
 ```
 
-### Action Schema — 10 Typed Actions
+### Action Schema — 12 Typed Actions
 
 ```python
 class AgentAction(BaseModel):
@@ -417,11 +417,14 @@ class AgentAction(BaseModel):
         "screenshot",  # capture full-page evidence screenshot
         "extract",     # read text from an element into history
         "wait",        # wait for an element to appear
+        "download",    # click a download trigger and save the file
+        "select_option",  # select from a native <select> dropdown
         "save_progress",  # checkpoint partial data without stopping
         "done",        # task complete — write extracted data
         "fail",        # unrecoverable — write reason and stop
     ]
-    selector: str | None = None     # click, type, extract, wait — element index or text
+    selector: str | None = None     # click, type, extract, wait, download, select_option — element index or text
+    value: str | None = None        # select_option: visible option text or value
     url: str | None = None          # goto
     text: str | None = None         # type
     direction: str | None = None    # scroll: "up" | "down"
@@ -573,7 +576,7 @@ DOM provides structure + interactable elements (fast, cheap). Vision provides vi
 
 ## 11. Layer 7 — Action System
 
-10 actions. Pure functions. Always return `ActionResult`, never raise.
+12 actions. Pure functions. Always return `ActionResult`, never raise.
 
 | Action | Playwright Call | Error Policy |
 |--------|----------------|--------------|
@@ -584,6 +587,8 @@ DOM provides structure + interactable elements (fast, cheap). Vision provides vi
 | `wait` | `page.wait_for_selector(sel, timeout=10000)` | Timeout → ActionResult(success=False) |
 | `screenshot` | `page.screenshot(full_page=True)` | Always succeeds |
 | `extract` | `page.inner_text(selector)` | Not found → empty string + warning |
+| `download` | `page.expect_download()` + artifact save | Timeout / no file → ActionResult(success=False) |
+| `select_option` | `locator.select_option(label|value)` | Missing native select / missing option → fail clearly |
 | `save_progress` | Checkpoint data, continue loop | Always succeeds |
 | `done` | Write result + signal loop exit | Always succeeds |
 | `fail` | Write failure + signal loop exit | Always succeeds |

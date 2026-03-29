@@ -73,7 +73,7 @@ User Input (prompt or CSV)
 │                                           │
 │  DOM Extractor: a11y tree → pruned text   │
 │  Vision Module: screenshot → Claude Vision│
-│  10 typed actions (click, type, extract…) │
+│  12 typed actions (click, type, extract, download…) │
 │  Structured reflection per step           │
 │  Escalating recovery on stagnation        │
 │  Run-scoped memory within the current run │
@@ -208,7 +208,7 @@ Claude receives the pruned DOM, recent history, accumulated data, run state, and
 
 ### 3. Act
 
-10 actions available, each wrapped in a 60-second timeout:
+12 actions available, each wrapped in a 60-second timeout:
 
 | Action | What it does |
 |--------|-------------|
@@ -219,6 +219,8 @@ Claude receives the pruned DOM, recent history, accumulated data, run state, and
 | `screenshot(label)` | Full-page evidence screenshot (SHA-256 hashed) |
 | `extract(selector)` | Read text content into memory |
 | `wait(selector)` | Wait for element to appear |
+| `download(selector)` | Click a download trigger and save the file as an evidence artifact |
+| `select_option(selector, value)` | Pick a value from a native `<select>` dropdown |
 | `save_progress(data)` | Checkpoint partial data, keep going |
 | `done(extracted)` | Task complete — write structured result |
 | `fail(note)` | Unrecoverable — stop with reason |

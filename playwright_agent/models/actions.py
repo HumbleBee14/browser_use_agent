@@ -1,4 +1,4 @@
-"""Action schema — the 10 typed actions the agent can take.
+"""Action schema — the 12 typed actions the agent can take.
 
 Claude always returns one of these via tool_choice={"type":"any"}.
 No free-form prose. If it can't proceed, it returns "fail" with a note.
@@ -28,11 +28,14 @@ class AgentAction(BaseModel):
         "screenshot",     # capture full-page evidence screenshot
         "extract",        # read text from an element into history
         "wait",           # wait for an element to appear
+        "download",       # click a link/button and capture the downloaded file
+        "select_option",  # select from a native <select> dropdown
         "save_progress",  # checkpoint partial data without stopping
         "done",           # task complete — write extracted data
         "fail",           # unrecoverable — write reason and stop
     ]
-    selector: str | None = None     # click, type, extract, wait
+    selector: str | None = None     # click, type, extract, wait, download, select_option
+    value: str | None = None        # select_option: option text to select
     url: str | None = None          # goto
     text: str | None = None         # type
     direction: str | None = None    # scroll: "up" | "down"
@@ -52,6 +55,8 @@ class ActionResult(BaseModel):
     description: str = ""
     error: str | None = None
     extracted_text: str | None = None  # for "extract" action
+    download_path: str | None = None   # for "download" action
+    download_name: str | None = None   # suggested filename for "download" action
 
 
 class StepRecord(BaseModel):
@@ -95,7 +100,7 @@ class SampleResult(BaseModel):
 
 
 def action_tool_schema(*, include_reflection: bool = True) -> list[dict]:
-    """Generate Anthropic tool_use schema for the 10 agent actions.
+    """Generate Anthropic tool_use schema for the 12 agent actions.
 
     When ``include_reflection`` is False (``REFLECTION_MODE=light``), reflection
     fields are omitted from tool definitions to reduce per-request token overhead.
@@ -225,6 +230,46 @@ def action_tool_schema(*, include_reflection: bool = True) -> list[dict]:
                     **reflection_properties,
                 },
                 "required": ["selector"],
+            },
+        },
+        {
+            "name": "download",
+            "description": (
+                "Click a download link or button and save the downloaded file. "
+                "Works with any file type (PDF, Excel, CSV, ZIP, images, etc.). "
+                "The file is saved to the evidence folder with SHA-256 hash."
+            ),
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "selector": {
+                        "type": "string",
+                        "description": "Element index or text of the download link/button",
+                    },
+                    **reflection_properties,
+                },
+                "required": ["selector"],
+            },
+        },
+        {
+            "name": "select_option",
+            "description": (
+                "Select an option from a native <select> dropdown by its visible label text."
+            ),
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "selector": {
+                        "type": "string",
+                        "description": "Element index or label of the <select> dropdown",
+                    },
+                    "value": {
+                        "type": "string",
+                        "description": "The visible text of the option to select",
+                    },
+                    **reflection_properties,
+                },
+                "required": ["selector", "value"],
             },
         },
         {

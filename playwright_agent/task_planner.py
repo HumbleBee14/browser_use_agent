@@ -21,6 +21,7 @@ Batch chunking:
 from __future__ import annotations
 
 import json
+import re
 
 from anthropic import AsyncAnthropic
 
@@ -161,7 +162,6 @@ def _parse_planner_response(text: str) -> dict:
     text = text.strip()
 
     if "```" in text:
-        import re
         json_match = re.search(r'```(?:json)?\s*\n?(.*?)\n?```', text, re.DOTALL)
         if json_match:
             text = json_match.group(1).strip()

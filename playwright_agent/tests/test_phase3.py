@@ -8,6 +8,7 @@ Run: python tests/test_phase3.py
 
 from __future__ import annotations
 
+import asyncio
 import json
 import sys
 import tempfile
@@ -215,13 +216,98 @@ def test_judgment_extraction_from_done():
 
 # ---- prompt construction ----
 
-def test_tool_schema_all_10_actions():
-    """Tool schema should have exactly 10 tools."""
+def test_tool_schema_all_12_actions():
+    """Tool schema should have exactly 12 tools."""
     tools = action_tool_schema()
-    assert len(tools) == 10
+    assert len(tools) == 12
     names = {t["name"] for t in tools}
-    expected = {"goto", "click", "type", "scroll", "screenshot", "extract", "wait", "save_progress", "done", "fail"}
+    expected = {"goto", "click", "type", "scroll", "screenshot", "extract", "wait", "download", "select_option", "save_progress", "done", "fail"}
     assert names == expected
+
+
+def test_download_dispatch_preserves_suggested_filename():
+    """Dispatch should save downloaded artifacts under the browser-suggested filename."""
+    from agent_dispatch import dispatch
+
+    async def _run():
+        with tempfile.TemporaryDirectory() as tmp:
+            om = OutputManager(Path(tmp), "sample_001")
+            temp_file = Path(tmp) / "playwright-temp.bin"
+            temp_file.write_bytes(b"report-bytes")
+
+            async def _fake_download_file(page, selector, element_map):
+                return ActionResult(
+                    success=True,
+                    description="Downloaded: report.csv (12 bytes)",
+                    download_path=str(temp_file),
+                    download_name="report.csv",
+                )
+
+            class _Page:
+                url = "https://example.com/report"
+
+            class _Snap:
+                element_map = {}
+
+            from agent_dispatch import browser as dispatch_browser
+
+            with _temp_config_attr(dispatch_browser, "download_file", _fake_download_file):
+                result = await dispatch(
+                    AgentAction(action="download", selector="Export CSV"),
+                    _Page(),
+                    _Snap(),
+                    om,
+                )
+
+            assert result.success is True
+            assert om._artifacts, "Download should create an artifact"
+            assert om._artifacts[0].filename.endswith("report.csv")
+
+    asyncio.run(_run())
+
+
+def test_select_option_falls_back_to_label_resolution():
+    """Native selects labeled in the UI should still work when text/index resolution fails."""
+    from tools import browser
+
+    class _EmptyLocator:
+        def __init__(self):
+            self.first = self
+
+        async def count(self):
+            return 0
+
+    class _SelectLocator:
+        def __init__(self):
+            self.first = self
+            self.calls = []
+
+        async def count(self):
+            return 1
+
+        async def select_option(self, *, label=None, value=None, timeout=None):
+            self.calls.append({"label": label, "value": value, "timeout": timeout})
+
+    class _Page:
+        def __init__(self):
+            self.select_locator = _SelectLocator()
+
+        def get_by_text(self, selector, exact=False):
+            return _EmptyLocator()
+
+        def locator(self, selector):
+            return _EmptyLocator()
+
+        def get_by_label(self, selector):
+            return self.select_locator
+
+    async def _run():
+        page = _Page()
+        result = await browser.select_option(page, "Country", "Canada")
+        assert result.success is True
+        assert page.select_locator.calls[0]["label"] == "Canada"
+
+    asyncio.run(_run())
 
 
 def test_retryable_llm_error_classification():

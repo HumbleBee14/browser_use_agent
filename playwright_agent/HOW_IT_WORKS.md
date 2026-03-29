@@ -133,7 +133,7 @@ If `dom_confidence < 0.6` (canvas/SVG-heavy pages), vision activates — takes a
 
 - `system`: task spec's system_prompt (static, prompt-cached across steps)
 - `messages`: one user message with page state + budget-fitted history (5-25 items) + goal + output schema + reflection context
-- `tools`: 10 action definitions (each with optional reflection fields)
+- `tools`: 12 action definitions (each with optional reflection fields)
 - `tool_choice: {"type": "any"}` — forces structured output, never prose
 
 Claude returns one or more tool calls. Each includes optional structured reflection:
@@ -154,6 +154,8 @@ When `ENABLE_MULTI_ACTIONS=true`, multiple actions can execute per LLM call (max
 | `screenshot(label)`    | `page.screenshot()`            | N/A, saves with SHA-256                     |
 | `extract(selector)`    | `locator.inner_text()`         | Same 3-strategy                             |
 | `wait(selector)`       | `wait_for_selector()`          | Text or CSS                                 |
+| `download(selector)`   | `page.expect_download()` + save | Same 3-strategy                             |
+| `select_option(selector, value)` | `locator.select_option()` | Index/text/label to native `<select>` |
 | `done(extracted)`      | Validates + writes result      | N/A                                         |
 | `fail(note)`           | Writes failure + exits         | N/A                                         |
 | `save_progress(extracted, note)` | Checkpoint data, continue | N/A, deep-merges with previous |

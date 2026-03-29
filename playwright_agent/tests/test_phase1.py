@@ -117,8 +117,11 @@ def test_sample_input_from_csv_row_no_url():
 
 # ---------- AgentAction ----------
 
-def test_agent_action_all_10_types():
-    valid_actions = ["goto", "click", "type", "scroll", "screenshot", "extract", "wait", "save_progress", "done", "fail"]
+def test_agent_action_all_12_types():
+    valid_actions = [
+        "goto", "click", "type", "scroll", "screenshot", "extract",
+        "wait", "download", "select_option", "save_progress", "done", "fail",
+    ]
     for action_name in valid_actions:
         a = AgentAction(action=action_name)
         assert a.action == action_name
@@ -134,14 +137,25 @@ def test_agent_action_rejects_invalid_type():
 
 # ---------- Tool Schema ----------
 
-def test_tool_schema_has_10_tools():
+def test_tool_schema_has_12_tools():
     tools = action_tool_schema()
-    assert len(tools) == 10
+    assert len(tools) == 12
     names = [t["name"] for t in tools]
     assert "goto" in names
     assert "save_progress" in names
     assert "done" in names
     assert "fail" in names
+
+
+def test_action_result_supports_download_metadata():
+    result = ActionResult(
+        success=True,
+        description="Downloaded: report.csv (123 bytes)",
+        download_path="/tmp/playwright/download-123.tmp",
+        download_name="report.csv",
+    )
+    assert result.download_path.endswith(".tmp")
+    assert result.download_name == "report.csv"
 
 
 def test_tool_schema_structure():
@@ -224,6 +238,7 @@ def test_output_manager_download_dot_file():
         om = OutputManager(Path(tmp), "test")
         a = om.save_download(b"data", ".hidden", "https://example.com")
         assert not a.filename.startswith(".")  # counter prefix prevents this
+        assert a.filename.endswith("download_1")
 
 
 def test_output_manager_atomic_write():

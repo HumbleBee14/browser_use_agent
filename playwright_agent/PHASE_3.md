@@ -168,7 +168,7 @@ A single user message is built fresh each turn with these sections:
 | Output schema | JSON field definitions | What to put in `done()` |
 | Required fields | Field names that must be non-empty | Hard requirements |
 
-The system prompt is static across all steps (prompt-cached to save tokens). Claude must return one of 10 typed actions via `tool_choice={"type": "any"}` — it cannot respond with prose.
+The system prompt is static across all steps (prompt-cached to save tokens). Claude must return one of 12 typed actions via `tool_choice={"type": "any"}` — it cannot respond with prose.
 
 ### Step 3: ACT — Execute the Action
 
