@@ -10,7 +10,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, PrivateAttr, model_validator
 
 
 class TaskSpec(BaseModel):
@@ -50,6 +50,10 @@ class TaskSpec(BaseModel):
 
     # Auth (path to Playwright storage_state JSON)
     auth_profile: str | None = None
+
+    # Set by task_planner when LLM flags needs_discovery (not in JSON task files)
+    _discovery_url: str = PrivateAttr(default="")
+    _needs_discovery: bool = PrivateAttr(default=False)
 
     @model_validator(mode="after")
     def validate_cross_fields(self) -> TaskSpec:

@@ -427,7 +427,7 @@ class AgentAction(BaseModel):
 - Truncated to 160 chars to prevent token bloat
 - Stored in `StepRecord` → appears in `action_log.json` audit trail
 - `memory_update` and `next_goal` shown in history for context continuity
-- Controlled by `REFLECTION_MODE`: "full" (default) or "light" (omits reflection instructions, saves tokens)
+- Controlled by `REFLECTION_MODE`: "light" (default: slimmer tool schema + prompt) or "full" (reflection in tools and history annotations)
 
 ---
 
@@ -503,7 +503,8 @@ When `ENABLE_MULTI_ACTIONS=true` (default: false):
 ### New Config Flags
 
 ```
-REFLECTION_MODE=full              # "full" or "light"
+REFLECTION_MODE=light             # default; use "full" for long-horizon
+ENABLE_MEMORY_DISTILLATION=true   # false = heuristic patterns only (no post-run Haiku)
 FINALIZE_ON_FAILURE=true          # best-effort consolidation on exhaustion/failure
 ENABLE_FALLBACK_LLM=false         # try fallback model on primary failure
 FALLBACK_LLM_MODEL=claude-haiku-4-5

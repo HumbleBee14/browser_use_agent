@@ -38,7 +38,7 @@ def _get_client() -> AsyncAnthropic:
     return _client
 
 
-PLANNER_SYSTEM = """You are a task planner for a browser evidence agent. Given a natural language instruction, you produce a structured execution plan.
+PLANNER_SYSTEM = """You are a task planner for a browser workflow agent. Given a natural language instruction, you produce a structured execution plan.
 
 You must return valid JSON with exactly two keys:
 

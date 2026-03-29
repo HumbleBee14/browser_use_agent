@@ -151,8 +151,9 @@ class OutputManager:
             finished_at=datetime.now(timezone.utc).isoformat(),
         )
 
-        # Write both files atomically: write to .tmp then rename.
-        # If crash occurs between writes, neither partial file exists.
+        # Each file is replaced atomically via .tmp -> rename.
+        # The pair is not transactional across both files, but each individual
+        # file is never left partially written.
         result_data = json.dumps(result.model_dump(), indent=2, default=str)
         log_data = json.dumps(
             [r.model_dump() for r in self._action_log], indent=2, default=str

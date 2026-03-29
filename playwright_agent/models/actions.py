@@ -94,26 +94,28 @@ class SampleResult(BaseModel):
     finished_at: str = ""
 
 
-def action_tool_schema() -> list[dict]:
+def action_tool_schema(*, include_reflection: bool = True) -> list[dict]:
     """Generate Anthropic tool_use schema for the 10 agent actions.
 
-    This is sent to Claude in every LLM call so it can only return
-    structured tool calls, never free-form prose.
+    When ``include_reflection`` is False (``REFLECTION_MODE=light``), reflection
+    fields are omitted from tool definitions to reduce per-request token overhead.
     """
-    REFLECTION_PROPERTIES = {
-        "evaluation_previous_step": {
-            "type": "string",
-            "description": "One sentence: did your previous action succeed or fail, and why?",
-        },
-        "memory_update": {
-            "type": "string",
-            "description": "One sentence: key fact to remember for upcoming steps.",
-        },
-        "next_goal": {
-            "type": "string",
-            "description": "One sentence: what you intend to accomplish with this action.",
-        },
-    }
+    reflection_properties: dict = {}
+    if include_reflection:
+        reflection_properties = {
+            "evaluation_previous_step": {
+                "type": "string",
+                "description": "One sentence: did your previous action succeed or fail, and why?",
+            },
+            "memory_update": {
+                "type": "string",
+                "description": "One sentence: key fact to remember for upcoming steps.",
+            },
+            "next_goal": {
+                "type": "string",
+                "description": "One sentence: what you intend to accomplish with this action.",
+            },
+        }
     return [
         {
             "name": "goto",
@@ -122,7 +124,7 @@ def action_tool_schema() -> list[dict]:
                 "type": "object",
                 "properties": {
                     "url": {"type": "string", "description": "Full URL including https://"},
-                    **REFLECTION_PROPERTIES,
+                    **reflection_properties,
                 },
                 "required": ["url"],
             },
@@ -140,7 +142,7 @@ def action_tool_schema() -> list[dict]:
                         "type": "string",
                         "description": "Element index (e.g. '3') or visible text (e.g. 'Show all checks')",
                     },
-                    **REFLECTION_PROPERTIES,
+                    **reflection_properties,
                 },
                 "required": ["selector"],
             },
@@ -156,7 +158,7 @@ def action_tool_schema() -> list[dict]:
                         "description": "Element index or visible label of the input field",
                     },
                     "text": {"type": "string", "description": "Text to type"},
-                    **REFLECTION_PROPERTIES,
+                    **reflection_properties,
                 },
                 "required": ["selector", "text"],
             },
@@ -172,7 +174,7 @@ def action_tool_schema() -> list[dict]:
                         "enum": ["up", "down"],
                         "description": "Scroll direction",
                     },
-                    **REFLECTION_PROPERTIES,
+                    **reflection_properties,
                 },
                 "required": ["direction"],
             },
@@ -190,7 +192,7 @@ def action_tool_schema() -> list[dict]:
                         "type": "string",
                         "description": "Short label for the screenshot filename",
                     },
-                    **REFLECTION_PROPERTIES,
+                    **reflection_properties,
                 },
                 "required": ["label"],
             },
@@ -205,7 +207,7 @@ def action_tool_schema() -> list[dict]:
                         "type": "string",
                         "description": "Element index or text to locate the element",
                     },
-                    **REFLECTION_PROPERTIES,
+                    **reflection_properties,
                 },
                 "required": ["selector"],
             },
@@ -220,7 +222,7 @@ def action_tool_schema() -> list[dict]:
                         "type": "string",
                         "description": "Text or selector to wait for",
                     },
-                    **REFLECTION_PROPERTIES,
+                    **reflection_properties,
                 },
                 "required": ["selector"],
             },
@@ -244,7 +246,7 @@ def action_tool_schema() -> list[dict]:
                         "type": "string",
                         "description": "Brief note about progress (e.g. 'Completed PR #1 of 5')",
                     },
-                    **REFLECTION_PROPERTIES,
+                    **reflection_properties,
                 },
                 "required": ["extracted"],
             },
@@ -262,7 +264,7 @@ def action_tool_schema() -> list[dict]:
                         "type": "object",
                         "description": "Extracted data matching the task's output_schema",
                     },
-                    **REFLECTION_PROPERTIES,
+                    **reflection_properties,
                 },
                 "required": ["extracted"],
             },
@@ -274,7 +276,7 @@ def action_tool_schema() -> list[dict]:
                 "type": "object",
                 "properties": {
                     "note": {"type": "string", "description": "Why the task cannot be completed"},
-                    **REFLECTION_PROPERTIES,
+                    **reflection_properties,
                 },
                 "required": ["note"],
             },

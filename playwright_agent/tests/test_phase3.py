@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 import sys
 import tempfile
+from contextlib import contextmanager
 from pathlib import Path
 
 import httpx
@@ -20,6 +21,17 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from models.task import TaskSpec, SampleInput
 from models.actions import AgentAction, ActionResult, action_tool_schema
 from tools.output import OutputManager
+
+
+@contextmanager
+def _temp_config_attr(module, name, value):
+    """Temporary config override that works without pytest's monkeypatch fixture."""
+    old = getattr(module, name)
+    setattr(module, name, value)
+    try:
+        yield
+    finally:
+        setattr(module, name, old)
 
 
 # ---- done validation ----
@@ -313,13 +325,30 @@ def test_terminal_tools_only_done_and_fail():
     assert names == {"done", "fail"}, f"Expected only done/fail, got: {names}"
 
 
-def test_terminal_tools_include_reflection():
-    """Even terminal tools should have reflection properties."""
-    from agent_loop import _get_terminal_tools
-    reflection_keys = {"evaluation_previous_step", "memory_update", "next_goal"}
-    for tool in _get_terminal_tools():
-        props = set(tool["input_schema"]["properties"].keys())
-        assert reflection_keys.issubset(props), f"Terminal tool '{tool['name']}' missing reflection"
+def test_terminal_tools_include_reflection_when_full():
+    """In full reflection mode, terminal tools include reflection properties."""
+    import config
+
+    with _temp_config_attr(config, "REFLECTION_MODE", "full"):
+        from agent_loop import _get_terminal_tools
+
+        reflection_keys = {"evaluation_previous_step", "memory_update", "next_goal"}
+        for tool in _get_terminal_tools():
+            props = set(tool["input_schema"]["properties"].keys())
+            assert reflection_keys.issubset(props), f"Terminal tool '{tool['name']}' missing reflection"
+
+
+def test_terminal_tools_omit_reflection_when_light():
+    """In light mode, tool schema omits reflection fields (smaller prompts)."""
+    import config
+
+    with _temp_config_attr(config, "REFLECTION_MODE", "light"):
+        from agent_loop import _get_terminal_tools
+
+        reflection_keys = {"evaluation_previous_step", "memory_update", "next_goal"}
+        for tool in _get_terminal_tools():
+            props = set(tool["input_schema"]["properties"].keys())
+            assert reflection_keys.isdisjoint(props), f"Terminal tool '{tool['name']}' should not include reflection"
 
 
 # ---- escalating recovery ----
@@ -387,6 +416,8 @@ def test_config_has_new_feature_flags():
     import config
     assert hasattr(config, "REFLECTION_MODE")
     assert config.REFLECTION_MODE in ("full", "light")
+    assert hasattr(config, "ENABLE_MEMORY_DISTILLATION")
+    assert isinstance(config.ENABLE_MEMORY_DISTILLATION, bool)
     assert hasattr(config, "FINALIZE_ON_FAILURE")
     assert isinstance(config.FINALIZE_ON_FAILURE, bool)
     assert hasattr(config, "ENABLE_FALLBACK_LLM")

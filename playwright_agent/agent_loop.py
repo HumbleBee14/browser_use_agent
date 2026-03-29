@@ -2,11 +2,12 @@
 
 Custom ReAct cycle: OBSERVE → REFLECT → DECIDE → ACT → CHECK → repeat.
 
-Everything else is scaffolding. This file is the agent.
+Companion modules (`agent_prompt`, `agent_recovery`, `agent_merge`, etc.) hold
+helpers; this file owns the ReAct loop orchestration.
 
 Key invariants:
 - Claude always returns a typed tool call (tool_choice=any), never prose
-- Each action includes structured reflection (evaluation, memory, next_goal)
+- Reflection fields in tools + prompt when REFLECTION_MODE=full; light mode omits them for cost
 - History window is dynamic — fits as many recent actions as the token budget allows
 - Actions always return ActionResult, never raise
 - done/fail terminate the loop — max_steps is the hard ceiling
@@ -27,27 +28,42 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
-import re
 import time
 
-from anthropic import (
-    APIConnectionError,
-    APIResponseValidationError,
-    APITimeoutError,
-    AsyncAnthropic,
-    AuthenticationError,
-    BadRequestError,
-    ConflictError,
-    InternalServerError,
-    NotFoundError,
-    PermissionDeniedError,
-    RateLimitError,
-    UnprocessableEntityError,
-)
+from anthropic import AsyncAnthropic
 from playwright.async_api import Page
 
 import config
+from agent_dispatch import dispatch as _dispatch
+from agent_llm_retry import is_retryable_llm_error as _is_retryable_llm_error
+from agent_merge import deep_merge as _deep_merge
+from agent_navigation import (
+    BATCH_BREAKING_ACTIONS as _BATCH_BREAKING_ACTIONS,
+    is_batch_target_stable as _is_batch_target_stable,
+    is_dom_stable as _is_dom_stable,
+    is_pagination_click as _is_pagination_click,
+)
+from agent_prompt import (
+    MIN_HISTORY_ITEMS,
+    PROMPT_TOKEN_BUDGET,
+    build_messages as _build_messages,
+    estimate_tokens as _estimate_tokens,
+    fit_history as _fit_history,
+    summarize_steps as _summarize_steps,
+)
+from agent_recovery import (
+    attempt_final_consolidation as _attempt_final_consolidation,
+    build_recovery_notice as _build_recovery_notice,
+    check_termination as _check_termination,
+    is_infra_error as _is_infra_error,
+)
+from core import dom_extractor, vision
+from log_setup import logger
 from memory import MemoryStore
+from models.actions import AgentAction, ActionResult, StepRecord, action_tool_schema
+from models.task import SampleInput, TaskSpec
+from tools import browser
+from tools.output import OutputManager
 
 # Module-level singletons — reused across all samples for connection pooling
 _client: AsyncAnthropic | None = None
@@ -66,31 +82,13 @@ def _get_client() -> AsyncAnthropic:
     if _client is None:
         _client = AsyncAnthropic(api_key=config.ANTHROPIC_API_KEY, timeout=60.0)
     return _client
-from core import dom_extractor, vision
-from log_setup import logger
-from models.actions import (
-    AgentAction,
-    ActionResult,
-    StepRecord,
-    action_tool_schema,
-)
-
-# Terminal-only tool schema (done + fail) for last-step forced consolidation
-_TERMINAL_TOOLS: list[dict] | None = None
-
-# Actions that break a multi-action batch — navigation, terminal, or checkpoint
-_BATCH_BREAKING_ACTIONS = frozenset({"goto", "done", "fail", "save_progress"})
 
 
 def _get_terminal_tools() -> list[dict]:
-    """Return tool schema restricted to done + fail only."""
-    global _TERMINAL_TOOLS
-    if _TERMINAL_TOOLS is None:
-        _TERMINAL_TOOLS = [t for t in action_tool_schema() if t["name"] in ("done", "fail")]
-    return _TERMINAL_TOOLS
-from models.task import TaskSpec, SampleInput
-from tools import browser
-from tools.output import OutputManager
+    """Return tool schema restricted to done + fail (reflection fields match REFLECTION_MODE)."""
+    include_refl = config.REFLECTION_MODE == "full"
+    schema = action_tool_schema(include_reflection=include_refl)
+    return [t for t in schema if t["name"] in ("done", "fail")]
 
 
 async def run(
@@ -109,7 +107,7 @@ async def run(
 
     client = _get_client()
     memory = _get_memory()
-    tools = action_tool_schema()
+    tools = action_tool_schema(include_reflection=config.REFLECTION_MODE == "full")
     history: list[dict] = []
     progress: dict = {
         "pages_visited": [],
@@ -230,7 +228,53 @@ async def run(
             except Exception:
                 vision_text = ""
 
-        # ---- 2. BUILD PROMPT ----
+        # ---- 2. PRE-PROMPT SYSTEM NOTICES ----
+        # Inject budget/final-step notices BEFORE prompt construction so the
+        # current LLM call can actually react to them.
+        budget_ratio = step / effective_max if effective_max > 0 else 0
+        if budget_ratio >= 0.75 and not _warned_75:
+            _warned_75 = True
+            remaining_steps = effective_max - step
+            history.append({
+                "step": step,
+                "action": "system_notice",
+                "result": (
+                    f"BUDGET WARNING: You have used {step}/{effective_max} steps ({int(budget_ratio*100)}%). "
+                    f"{remaining_steps} steps remaining. Start consolidating results — "
+                    f"call save_progress with collected data, then finalize with done."
+                ),
+            })
+            log.info(f"Step {step} | Budget 75% warning injected")
+        if budget_ratio >= 0.90 and not _warned_90:
+            _warned_90 = True
+            remaining_steps = effective_max - step
+            history.append({
+                "step": step,
+                "action": "system_notice",
+                "result": (
+                    f"URGENT: {remaining_steps} steps left. Save any unsaved data NOW with save_progress, "
+                    f"then call done immediately with your best available results. "
+                    f"Partial results are far more valuable than exhausting all steps."
+                ),
+            })
+            log.info(f"Step {step} | Budget 90% warning injected")
+
+        # ---- 2b. LAST-STEP TOOL RESTRICTION ----
+        step_tools = tools
+        if step >= effective_max:
+            step_tools = _get_terminal_tools()
+            history.append({
+                "step": step,
+                "action": "system_notice",
+                "result": (
+                    "FINAL STEP. Your ONLY available actions are done and fail. "
+                    "Call done with all collected data, or fail with a precise reason. "
+                    "No other action is available."
+                ),
+            })
+            log.info(f"Step {step} | Final step — tools restricted to done/fail")
+
+        # ---- 2c. BUILD PROMPT ----
         # Dynamic history window: estimate fixed prompt costs, then fit history to budget
         fixed_tokens = _estimate_tokens(page_state + vision_text + task_spec.system_prompt + task_spec.goal)
         fitted_history = _fit_history(history, fixed_tokens)
@@ -263,50 +307,6 @@ async def run(
         log.debug(f"Step {step} history | {json.dumps(fitted_history, default=str)[:500]}")
         if vision_text:
             log.debug(f"Step {step} vision | {vision_text[:300]}")
-
-        # ---- 2b. BUDGET WARNINGS (one-time injections) ----
-        budget_ratio = step / effective_max if effective_max > 0 else 0
-        if budget_ratio >= 0.75 and not _warned_75:
-            _warned_75 = True
-            remaining_steps = effective_max - step
-            history.append({
-                "step": step,
-                "action": "system_notice",
-                "result": (
-                    f"BUDGET WARNING: You have used {step}/{effective_max} steps ({int(budget_ratio*100)}%). "
-                    f"{remaining_steps} steps remaining. Start consolidating results — "
-                    f"call save_progress with collected data, then finalize with done."
-                ),
-            })
-            log.info(f"Step {step} | Budget 75% warning injected")
-        if budget_ratio >= 0.90 and not _warned_90:
-            _warned_90 = True
-            remaining_steps = effective_max - step
-            history.append({
-                "step": step,
-                "action": "system_notice",
-                "result": (
-                    f"URGENT: {remaining_steps} steps left. Save any unsaved data NOW with save_progress, "
-                    f"then call done immediately with your best available results. "
-                    f"Partial results are far more valuable than exhausting all steps."
-                ),
-            })
-            log.info(f"Step {step} | Budget 90% warning injected")
-
-        # ---- 2c. LAST-STEP TOOL RESTRICTION ----
-        step_tools = tools
-        if step >= effective_max:
-            step_tools = _get_terminal_tools()
-            history.append({
-                "step": step,
-                "action": "system_notice",
-                "result": (
-                    "FINAL STEP. Your ONLY available actions are done and fail. "
-                    "Call done with all collected data, or fail with a precise reason. "
-                    "No other action is available."
-                ),
-            })
-            log.info(f"Step {step} | Final step — tools restricted to done/fail")
 
         # ---- 3. DECIDE (LLM call with prompt caching + retry) ----
         LLM_MAX_RETRIES = 3
@@ -990,636 +990,3 @@ async def run(
         except Exception:
             pass
 
-
-async def _dispatch(
-    action: AgentAction,
-    page: Page,
-    snap: dom_extractor.DOMSnapshot,
-    output_mgr: OutputManager,
-    seen_screenshot_hashes: set[str] | None = None,
-) -> ActionResult:
-    """Execute one action. Always returns ActionResult, never raises."""
-    try:
-        if action.action == "goto":
-            return await browser.goto(page, action.url or "")
-
-        elif action.action == "click":
-            return await browser.click(page, action.selector or "", snap.element_map)
-
-        elif action.action == "type":
-            return await browser.type_text(
-                page, action.selector or "", action.text or "", snap.element_map,
-            )
-
-        elif action.action == "scroll":
-            return await browser.scroll(page, action.direction or "down")
-
-        elif action.action == "screenshot":
-            data = await browser.take_screenshot(page, full_page=True)
-            artifact = output_mgr.save_screenshot(data, action.label or "page", page.url)
-            if seen_screenshot_hashes is not None and artifact.sha256 in seen_screenshot_hashes:
-                page_title = snap.title or "unknown"
-                return ActionResult(
-                    success=True,
-                    description=(
-                        f"Screenshot saved: {artifact.filename} — but this is IDENTICAL to a previous screenshot "
-                        f"of \"{page_title}\" (same SHA256). You are still on the same page. "
-                        f"Do NOT take another screenshot. Navigate to a new page with goto, or call done/fail."
-                    ),
-                )
-            if seen_screenshot_hashes is not None:
-                seen_screenshot_hashes.add(artifact.sha256)
-            page_title = snap.title or "unknown"
-            page_url = snap.url or page.url
-            return ActionResult(
-                success=True,
-                description=(
-                    f"Screenshot saved: {artifact.filename} "
-                    f"(page: \"{page_title}\", url: {page_url})"
-                ),
-            )
-
-        elif action.action == "extract":
-            return await browser.extract_text(page, action.selector or "", snap.element_map)
-
-        elif action.action == "wait":
-            return await browser.wait_for(page, action.selector or "")
-
-        elif action.action == "save_progress":
-            return ActionResult(success=True, description="Progress checkpointed")
-
-        elif action.action in ("done", "fail"):
-            return ActionResult(success=True, description=f"Action: {action.action}")
-
-        else:
-            return ActionResult(success=False, error=f"Unknown action: {action.action}")
-
-    except Exception as e:
-        return ActionResult(success=False, error=f"Dispatch error: {str(e)[:200]}")
-
-
-RETRYABLE_LLM_EXCEPTIONS = (
-    APITimeoutError,
-    APIConnectionError,
-    RateLimitError,
-    InternalServerError,
-    ConflictError,
-)
-
-NON_RETRYABLE_LLM_EXCEPTIONS = (
-    BadRequestError,
-    AuthenticationError,
-    PermissionDeniedError,
-    NotFoundError,
-    UnprocessableEntityError,
-    APIResponseValidationError,
-)
-
-
-def _is_retryable_llm_error(exc: Exception) -> bool:
-    """Return True only for transient LLM failures worth retrying."""
-    if isinstance(exc, RETRYABLE_LLM_EXCEPTIONS):
-        return True
-    if isinstance(exc, NON_RETRYABLE_LLM_EXCEPTIONS):
-        return False
-
-    text = str(exc).lower()
-    non_retryable_patterns = (
-        "prompt is too long",
-        "maximum context length",
-        "invalid request",
-        "tool schema",
-        "authentication",
-        "api key",
-        "permission",
-        "not found",
-        "unprocessable",
-    )
-    if any(pattern in text for pattern in non_retryable_patterns):
-        return False
-
-    retryable_patterns = (
-        "timed out",
-        "timeout",
-        "rate limit",
-        "429",
-        "connection error",
-        "connection reset",
-        "temporarily unavailable",
-        "service unavailable",
-        "overloaded",
-        "502",
-        "503",
-        "504",
-    )
-    return any(pattern in text for pattern in retryable_patterns)
-
-
-PAGINATION_KEYWORDS = frozenset({
-    "next", "next page", "load more", "show more", "older", "newer",
-    "page 2", "page 3", "page 4", "page 5", "»", "›", "→",
-    "previous", "prev", "back", "forward",
-})
-
-
-def _is_pagination_click(selector: str, result_desc: str) -> bool:
-    """Detect if a click was a pagination action (next page, load more, etc.)."""
-    combined = f"{selector} {result_desc}".lower()
-    return any(kw in combined for kw in PAGINATION_KEYWORDS)
-
-
-def _build_recovery_notice(
-    step: int,
-    effective_max: int,
-    steps_since_data: int,
-    stagnation_count: int,
-    stagnation_level: int,
-    consecutive_failures: int,
-    loop_counter: dict,
-    current_url: str,
-    has_accumulated: bool,
-) -> tuple[int, str] | None:
-    """Unified escalating recovery system.
-
-    Returns (escalation_level, message) or None.
-    Level 1: gentle nudge — suggest alternatives
-    Level 2: forceful demand — insist on strategy change
-    Level 3: forced consolidation — must call done/fail next
-    """
-    remaining = effective_max - step
-
-    # Level 3: forced consolidation after severe stagnation or near budget end
-    if stagnation_count >= 8 and stagnation_level < 3:
-        return 3, (
-            f"CRITICAL: You have been stuck on the same page for {stagnation_count} steps "
-            f"with no new data. You MUST call done with whatever data you have, "
-            f"or call fail with a reason. No more browsing."
-        )
-
-    # Level 2: forceful demand after moderate stagnation
-    if stagnation_count >= 5 and stagnation_level < 2:
-        return 2, (
-            f"WARNING: Same page state for {stagnation_count} steps, no new data in "
-            f"{steps_since_data} steps. CHANGE YOUR STRATEGY NOW. "
-            f"Options: navigate to a different page, try different selectors, "
-            f"or call done/save_progress with what you have. {remaining} steps left."
-        )
-
-    # Level 1: gentle nudge after early stagnation or watchdog trigger
-    if (stagnation_count >= 3 and stagnation_level < 1) or (
-        steps_since_data >= 5 and stagnation_level < 1
-    ):
-        return 1, (
-            f"You have not produced new data in {steps_since_data} steps. "
-            f"The page state appears unchanged. Try a different approach: "
-            f"navigate elsewhere, scroll to find new content, or extract data you can see. "
-            f"{remaining} steps remaining."
-        )
-
-    # Spam detection: 3 consecutive identical action types
-    SPAM_ACTIONS = {"screenshot", "goto", "extract", "scroll"}
-    if len(loop_counter) > 0:
-        for (url, act_name), count in loop_counter.items():
-            if count >= 4 and url == current_url and act_name in SPAM_ACTIONS:
-                return 1, (
-                    f"You have called '{act_name}' {count} times on this URL. "
-                    f"STOP repeating this action and try something different."
-                )
-
-    return None
-
-
-async def _attempt_final_consolidation(
-    client: AsyncAnthropic,
-    task_spec: TaskSpec,
-    accumulated: dict,
-    progress_notes: list[str],
-    progress: dict,
-    page_state: str,
-    prefer_fallback: bool = False,
-) -> dict | None:
-    """Make one last LLM call to produce best-effort structured output.
-
-    Triggered when:
-    - max_steps exhausted with accumulated data
-    - circuit breaker with accumulated data
-    - stagnation level 3 with accumulated data
-
-    Gives the LLM the accumulated data and asks it to produce a final
-    done-quality extraction. Returns the extracted dict or None on failure.
-
-    When prefer_fallback=True (e.g. primary model just failed), or when
-    ENABLE_FALLBACK_LLM is set, tries the fallback model first.
-    """
-    acc_text = json.dumps(accumulated, indent=2, default=str)[:4000]
-    notes_text = "\n".join(progress_notes[-5:]) if progress_notes else "No notes."
-    schema_text = json.dumps(task_spec.output_schema, indent=2) if task_spec.output_schema else "{}"
-
-    prompt = (
-        f"You are finalizing a browser evidence collection task that ran out of steps.\n\n"
-        f"## Task goal\n{task_spec.goal}\n\n"
-        f"## Output schema\n{schema_text}\n\n"
-        f"## Data collected so far\n```json\n{acc_text}\n```\n\n"
-        f"## Progress notes\n{notes_text}\n\n"
-        f"## Current page\n{page_state[:1000]}\n\n"
-        f"Produce the BEST POSSIBLE structured output matching the output schema "
-        f"using the data collected so far. Return ONLY a valid JSON object. "
-        f"Include all fields from the schema, using collected data where available "
-        f"and null for fields that could not be collected."
-    )
-
-    # Model selection: prefer fallback when primary just failed or when configured
-    models_to_try = []
-    if prefer_fallback and config.ENABLE_FALLBACK_LLM:
-        models_to_try = [config.FALLBACK_LLM_MODEL, config.LLM_MODEL]
-    elif config.ENABLE_FALLBACK_LLM:
-        models_to_try = [config.LLM_MODEL, config.FALLBACK_LLM_MODEL]
-    else:
-        models_to_try = [config.LLM_MODEL]
-
-    for model in models_to_try:
-        try:
-            response = await client.messages.create(
-                model=model,
-                max_tokens=2048,
-                messages=[{"role": "user", "content": prompt}],
-            )
-            text = response.content[0].text.strip()
-            json_match = re.search(r"\{[\s\S]*\}", text)
-            if json_match:
-                result = json.loads(json_match.group())
-                _deep_merge(result, accumulated)
-                return result
-        except Exception:
-            continue
-    return None
-
-
-def _is_dom_stable(before_count: int, after_count: int, tolerance: float = 0.20) -> bool:
-    """Check if the DOM structure is stable enough for batched actions.
-
-    Compares interactive element counts before and after a sub-action.
-    A significant change (>20% or >3 elements for small DOMs) means the page
-    re-rendered and remaining planned actions target stale indices.
-    """
-    if before_count == 0:
-        return after_count == 0
-    diff = abs(after_count - before_count)
-    threshold = max(3, int(before_count * tolerance))
-    return diff <= threshold
-
-
-def _is_batch_target_stable(
-    selector: str,
-    original_map: dict[str, str],
-    current_map: dict[str, str],
-) -> bool:
-    """Return True when a batched selector still maps to the same target.
-
-    Only index-based selectors are vulnerable to stale remapping. Text/CSS selectors
-    are re-resolved by Playwright at execution time, so they are allowed through.
-    """
-    if not selector or not selector.isdigit():
-        return True
-
-    original_target = original_map.get(selector)
-    current_target = current_map.get(selector)
-    return bool(original_target) and original_target == current_target
-
-
-INFRA_ERROR_PATTERNS = [
-    "timeout", "net::err", "dns", "connection refused", "connection reset",
-    "network error", "err_connection", "err_name_not_resolved",
-    "err_internet_disconnected", "page crashed", "target closed",
-    "browser has been closed", "navigation error", "ssl",
-]
-
-
-def _is_infra_error(error_text: str) -> bool:
-    """Distinguish infrastructure errors (network, browser) from logic errors (element not found)."""
-    lower = error_text.lower()
-    return any(p in lower for p in INFRA_ERROR_PATTERNS)
-
-
-def _check_termination(
-    step: int,
-    elapsed: float,
-    task_spec,
-    accumulated: dict,
-    items_collected: int,
-    network_errors: int,
-    effective_max: int,
-    log,
-) -> tuple[str, str] | None:
-    """Check if the agent should stop early for a smart reason.
-
-    Returns (status, reason) if termination needed, None to continue.
-    """
-    # 1. Wall-clock timeout
-    if task_spec.max_time_seconds > 0 and elapsed > task_spec.max_time_seconds:
-        has_data = bool(accumulated)
-        status = "partial_success" if has_data else "failed"
-        return status, f"Wall-clock timeout ({elapsed:.0f}s > {task_spec.max_time_seconds}s limit)"
-
-    # 2. Network circuit breaker — too many consecutive infra failures
-    limit = task_spec.max_consecutive_network_errors
-    if network_errors >= limit:
-        has_data = bool(accumulated)
-        status = "partial_success" if has_data else "failed"
-        return status, f"Network circuit breaker: {network_errors} consecutive infrastructure errors"
-
-    # 3. Expected items reached via accumulated data (belt+suspenders with save_progress check)
-    if task_spec.expected_items > 0 and items_collected >= task_spec.expected_items:
-        for array_field in accumulated.values():
-            if isinstance(array_field, list) and len(array_field) >= task_spec.expected_items:
-                return None  # let the agent call done naturally — it already got the nudge
-
-    # 4. Near step budget with accumulated data — warn but don't terminate
-    remaining = effective_max - step
-    if remaining == 5 and accumulated:
-        log.info(f"Step {step} | 5 steps remaining with accumulated data — agent should wrap up soon")
-
-    return None
-
-
-def _deep_merge(base: dict, update: dict) -> None:
-    """Merge update into base, appending *unique* items to lists and recursing into dicts.
-
-    Deduplication uses JSON serialisation so identical dicts aren't appended twice
-    (e.g. the same contributor saved multiple times via save_progress).
-    """
-    for key, val in update.items():
-        if key in base and isinstance(base[key], list) and isinstance(val, list):
-            existing = {json.dumps(item, sort_keys=True, default=str) for item in base[key]}
-            for item in val:
-                serialised = json.dumps(item, sort_keys=True, default=str)
-                if serialised not in existing:
-                    base[key].append(item)
-                    existing.add(serialised)
-        elif key in base and isinstance(base[key], dict) and isinstance(val, dict):
-            _deep_merge(base[key], val)
-        else:
-            base[key] = val
-
-
-async def _summarize_steps(
-    client: AsyncAnthropic,
-    steps: list[dict],
-    goal: str,
-    log,
-) -> str:
-    """Produce a structured summary: findings, gaps, next actions.
-
-    Uses the cheap/fast model. Returns a compact structured block the
-    agent can act on immediately. Falls back to mechanical summary.
-    """
-    step_text = "\n".join(
-        f"Step {h['step']}: {h['action']}({json.dumps(h.get('params', {}), default=str)[:80]}) → {h.get('result', '')[:80]}"
-        for h in steps
-    )
-    try:
-        response = await client.messages.create(
-            model=config.LLM_FAST_MODEL,
-            max_tokens=250,
-            messages=[{
-                "role": "user",
-                "content": (
-                    f"Summarize these browser agent steps in a structured format. "
-                    f"Task goal: {goal}\n\nSteps:\n{step_text}\n\n"
-                    f"Reply in EXACTLY this format (3 lines, no extra text):\n"
-                    f"FOUND: <what data/evidence was collected>\n"
-                    f"GAPS: <what is still missing or incomplete>\n"
-                    f"NEXT: <best next action to make progress>"
-                ),
-            }],
-        )
-        return f"Steps {steps[0]['step']}-{steps[-1]['step']}:\n{response.content[0].text.strip()}"
-    except Exception as e:
-        log.debug(f"LLM summary failed, using mechanical fallback: {str(e)[:100]}")
-        actions = "; ".join(f"s{h['step']}:{h['action']}" for h in steps)
-        return f"Steps {steps[0]['step']}-{steps[-1]['step']}: {actions}"
-
-
-def _estimate_tokens(text: str) -> int:
-    """Rough token estimate: ~4 chars per token for English/code mix."""
-    return max(1, len(text) // 4)
-
-
-# Token budget = 8% of model context window, capped at 24K, floor 8K.
-# Why 8%: LLMs lose attention on mid-prompt content above ~20% fill ("lost in the middle" — Liu et al. 2023).
-# Cap at 24K: even a 1M-context model doesn't need 80K of prompt for a browser agent step.
-PROMPT_TOKEN_BUDGET = min(24_000, max(8_000, int(config.LLM_CONTEXT_WINDOW * 0.08)))
-HISTORY_TOKEN_SHARE = 0.30  # 30% of budget goes to action history
-MIN_HISTORY_ITEMS = 5
-MAX_HISTORY_ITEMS = 25
-
-# Importance weights — data-producing actions get priority in the window
-_IMPORTANCE: dict[str, int] = {
-    "save_progress": 3,
-    "done": 3,
-    "fail": 3,
-    "extract": 2,
-    "screenshot": 1,
-    "system_notice": 2,
-    "click": 1,
-    "goto": 1,
-    "type": 1,
-    "scroll": 0,
-    "wait": 0,
-}
-
-
-def _fit_history(full_history: list[dict], fixed_tokens: int) -> list[dict]:
-    """Dynamically select history items that fit within the token budget.
-
-    Strategy (hybrid approach from industry best practices):
-    1. Subtract fixed_tokens (DOM, vision, goal, summaries, etc.) from total budget
-    2. Allocate HISTORY_TOKEN_SHARE of the *remaining* space to history
-    3. Always include the last MIN_HISTORY_ITEMS (recency matters most)
-    4. For older items, score by importance and include highest-value ones first
-    5. Stop when budget is exhausted or MAX_HISTORY_ITEMS reached
-    """
-    remaining_capacity = max(0, PROMPT_TOKEN_BUDGET - fixed_tokens)
-    budget = max(500, int(remaining_capacity * HISTORY_TOKEN_SHARE))
-
-    if not full_history:
-        return []
-
-    # Always include the most recent items (verbatim recency window)
-    recency_window = full_history[-MIN_HISTORY_ITEMS:]
-    recency_tokens = sum(_estimate_tokens(json.dumps(h, default=str)) for h in recency_window)
-
-    remaining_budget = budget - recency_tokens
-    if remaining_budget <= 0 or len(full_history) <= MIN_HISTORY_ITEMS:
-        return recency_window
-
-    # Score older items by importance and select the most valuable ones
-    older = full_history[:-MIN_HISTORY_ITEMS]
-    scored = []
-    for i, item in enumerate(older):
-        action = item.get("action", "")
-        importance = _IMPORTANCE.get(action, 0)
-        recency_bonus = i / max(len(older), 1)  # 0.0 (oldest) → 1.0 (most recent)
-        score = importance + recency_bonus
-        tokens = _estimate_tokens(json.dumps(item, default=str))
-        scored.append((score, tokens, item))
-
-    scored.sort(key=lambda x: x[0], reverse=True)
-
-    selected_older = []
-    tokens_used = 0
-    for score, tokens, item in scored:
-        if tokens_used + tokens > remaining_budget:
-            continue
-        selected_older.append(item)
-        tokens_used += tokens
-        if len(selected_older) + len(recency_window) >= MAX_HISTORY_ITEMS:
-            break
-
-    selected_older.sort(key=lambda x: x.get("step", 0))
-    return selected_older + recency_window
-
-
-def _build_messages(
-    page_state: str,
-    vision_text: str,
-    history: list[dict],
-    task_spec: TaskSpec,
-    sample: SampleInput,
-    snap: dom_extractor.DOMSnapshot,
-    consecutive_failures: int,
-    loop_counter: dict,
-    progress: dict | None = None,
-    accumulated: dict | None = None,
-    step_summaries: list[str] | None = None,
-    current_step: int = 0,
-    memory_hints: str | None = None,
-    effective_max: int | None = None,
-) -> list[dict]:
-    """Build the message list for the LLM call.
-
-    Structure:
-      USER message with:
-        - Current page state (DOM)
-        - Vision analysis (if activated)
-        - Action history (dynamically sized)
-        - Recovery nudges (if stuck)
-        - Goal + output schema
-    """
-    parts = []
-
-    # Current page state
-    parts.append(f"## Current page state\n{page_state}")
-
-    # Vision supplement (if DOM confidence was low)
-    if vision_text:
-        parts.append(f"\n## Visual analysis (DOM was insufficient)\n{vision_text}")
-
-    # Step budget awareness (use effective_max which includes pagination bonus)
-    budget = effective_max if effective_max else task_spec.max_steps
-    if current_step > 0:
-        remaining = budget - current_step
-        parts.append(f"\n**Step {current_step} of {budget}** ({remaining} remaining)")
-
-    # Accumulated data from save_progress calls (long-term memory)
-    if accumulated:
-        acc_text = json.dumps(accumulated, indent=2, default=str)
-        if len(acc_text) > 2000:
-            acc_text = acc_text[:2000] + "\n... (truncated)"
-        parts.append(f"\n## Data collected so far (via save_progress)\n```json\n{acc_text}\n```")
-
-    # Step summaries (condensed history from earlier steps)
-    if step_summaries:
-        parts.append(f"\n## Earlier steps (condensed)\n" + "\n".join(step_summaries[-3:]))
-
-    # Progress summary (persists beyond history window — structured run state)
-    if progress and any(progress.values()):
-        progress_lines = []
-        if progress.get("pages_visited"):
-            progress_lines.append(f"Pages visited: {', '.join(progress['pages_visited'][-10:])}")
-        if progress.get("artifacts"):
-            progress_lines.append(f"Screenshots taken: {', '.join(progress['artifacts'])}")
-        if progress.get("fields_found"):
-            progress_lines.append(f"Data extracted so far: {', '.join(progress['fields_found'][-5:])}")
-        if progress.get("failed_urls"):
-            progress_lines.append(f"FAILED URLs (skip these): {', '.join(progress['failed_urls'][-5:])}")
-        if progress.get("blocked_selectors"):
-            progress_lines.append(f"BROKEN selectors (don't retry): {', '.join(progress['blocked_selectors'][-5:])}")
-        if progress.get("dead_ends"):
-            progress_lines.append(f"DEAD ENDS (tried, didn't work): {', '.join(progress['dead_ends'][-3:])}")
-        if progress.get("exhausted_pages"):
-            progress_lines.append(f"Exhausted pages (all data taken): {', '.join(progress['exhausted_pages'][-5:])}")
-        if progress_lines:
-            parts.append(f"\n## Run state\n" + "\n".join(progress_lines))
-
-    # Action history (budget-fitted, with reflection context)
-    if history:
-        history_lines = []
-        show_reflection = config.REFLECTION_MODE == "full"
-        for h in history:
-            line = f"Step {h['step']}: {h['action']} → {h.get('result', '')[:100]}"
-            if show_reflection:
-                if h.get("memory"):
-                    line += f" [mem: {h['memory'][:60]}]"
-                if h.get("goal"):
-                    line += f" [goal: {h['goal'][:60]}]"
-            history_lines.append(line)
-        parts.append(f"\n## Action history ({len(history)} items, budget-fitted)\n" + "\n".join(history_lines))
-
-    # Consecutive failure recovery
-    if consecutive_failures >= 3:
-        interactive = [
-            f"[{n.index}] [{n.role}] \"{n.name}\""
-            for n in snap.nodes
-            if n.role in dom_extractor.INTERACTIVE_ROLES and n.name
-        ]
-        if interactive:
-            parts.append(
-                f"\n[RECOVERY] {consecutive_failures} consecutive failures. "
-                f"Here are all visible interactive elements:\n"
-                + "\n".join(interactive[:15])
-            )
-
-    # Sample context
-    sample_info = f"SAMPLE: ID={sample.sample_id}"
-    if sample.url:
-        sample_info += f", URL={sample.url}"
-    if sample.extra:
-        sample_info += f", Extra={json.dumps(sample.extra)}"
-    parts.append(f"\n## Sample\n{sample_info}")
-
-    # Long-term memory hints (learned navigation patterns for this domain)
-    if memory_hints and current_step <= 3:
-        parts.append(f"\n{memory_hints}")
-
-    # Goal
-    parts.append(f"\n## Goal\n{task_spec.goal}")
-
-    # Output schema
-    if task_spec.output_schema:
-        schema_text = json.dumps(task_spec.output_schema, indent=2)
-        parts.append(f"\n## Output schema (populate when calling done)\n{schema_text}")
-
-    # Required fields reminder
-    if task_spec.required_fields:
-        parts.append(f"\nRequired fields (must be non-empty in done): {task_spec.required_fields}")
-
-    # Judgment reminder
-    if task_spec.judgment_required:
-        parts.append(
-            f"\n## Judgment required\nQuestion: {task_spec.judgment_question}\n"
-            f"Include judgment fields in your done() extracted data: "
-            f"{json.dumps(task_spec.judgment_output_schema)}"
-        )
-
-    if config.REFLECTION_MODE == "full":
-        parts.append(
-            "\nTake the single best next action. "
-            "Include evaluation_previous_step (did last action work?), "
-            "memory_update (key fact to carry forward), and "
-            "next_goal (what you intend to accomplish). Keep each to one sentence."
-        )
-    else:
-        parts.append("\nTake the single best next action.")
-
-    return [{"role": "user", "content": "\n".join(parts)}]

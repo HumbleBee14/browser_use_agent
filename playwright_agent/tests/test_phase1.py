@@ -31,6 +31,15 @@ def test_task_spec_loads_from_template():
     assert spec.max_steps == 25
 
 
+def test_task_spec_planner_discovery_private_attrs():
+    """task_planner sets _discovery_url / _needs_discovery — must not crash (Pydantic v2)."""
+    spec = TaskSpec(task_id="t", phase="execution", system_prompt="s", goal="g")
+    spec._discovery_url = "https://example.com/items"
+    spec._needs_discovery = True
+    assert spec._discovery_url == "https://example.com/items"
+    assert spec._needs_discovery is True
+
+
 def test_task_spec_rejects_bad_required_fields():
     """required_fields must reference fields in output_schema."""
     try:
@@ -143,6 +152,39 @@ def test_tool_schema_structure():
         assert "description" in tool
         assert "input_schema" in tool
         assert tool["input_schema"]["type"] == "object"
+
+
+def test_tool_schema_light_omits_reflection_properties():
+    full = action_tool_schema(include_reflection=True)
+    light = action_tool_schema(include_reflection=False)
+    reflection_keys = {"evaluation_previous_step", "memory_update", "next_goal"}
+    for tool in light:
+        props = tool["input_schema"]["properties"]
+        assert reflection_keys.isdisjoint(props.keys())
+    click_full = next(t for t in full if t["name"] == "click")
+    click_light = next(t for t in light if t["name"] == "click")
+    assert len(click_light["input_schema"]["properties"]) < len(click_full["input_schema"]["properties"])
+
+
+def test_deep_merge_merges_list_rows_with_same_url():
+    from agent_merge import deep_merge
+
+    base = {"items": [{"url": "https://a.com", "name": "A", "score": 1}]}
+    update = {"items": [{"url": "https://a.com", "score": 2, "extra": "x"}]}
+    deep_merge(base, update)
+    assert len(base["items"]) == 1
+    assert base["items"][0]["name"] == "A"
+    assert base["items"][0]["score"] == 2
+    assert base["items"][0]["extra"] == "x"
+
+
+def test_deep_merge_dedupes_identical_dict_rows():
+    from agent_merge import deep_merge
+
+    base = {"rows": [{"id": "1", "x": 1}]}
+    update = {"rows": [{"id": "1", "x": 1}]}
+    deep_merge(base, update)
+    assert len(base["rows"]) == 1
 
 
 # ---------- OutputManager ----------

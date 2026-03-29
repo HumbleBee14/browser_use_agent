@@ -1,14 +1,14 @@
-# General Browser Agent — Architecture
+# Browser Workflow Agent — Architecture
 
 **Stack:** Python 3.11+ · Playwright (async) · Anthropic SDK · Pydantic v2
-**Constraint:** No browser-use. No LangChain. Custom agent loop only.
-**Build target:** One day
+
+**Constraint:** No browser-use library. No LangChain. Custom agent loop only.
 
 ---
 
 ## Design in One Sentence
 
-A site-agnostic browser agent that discovers sample lists by navigating any web UI, then collects structured evidence from each sample in parallel — driven by a custom ReAct loop with Claude, zero hardcoded site logic, and a swappable JSON task spec per target system.
+A site-agnostic browser agent that discovers sample lists by navigating any web UI, then executes structured browser tasks and collects reviewable evidence from each sample in parallel — driven by a custom ReAct loop with Claude, zero hardcoded site logic, and a swappable JSON task spec per target system.
 
 ---
 
@@ -34,7 +34,12 @@ A site-agnostic browser agent that discovers sample lists by navigating any web 
 
 ## 1. Project Requirements
 
-This is a **General Browser Agent** for audit and compliance evidence collection. Auditors manually navigate client systems (Workday, GitHub, Jira, LinkedIn), take screenshots, extract data into spreadsheets, and download artifacts. This agent automates that workflow.
+This is a **Browser Workflow Agent** for structured browser workflows. It started from audit/compliance evidence collection, where analysts manually navigate systems like Workday, GitHub, Jira, and LinkedIn, take screenshots, extract data into spreadsheets, and download artifacts. It has since expanded into a broader DOM-first browser agent for extraction, navigation, enrichment, form workflows, judgments, and long-horizon evidence collection.
+
+The core design target is now:
+- **General-purpose across accessible DOM-first web tasks**
+- **Evidence-oriented by default** — screenshots, structured outputs, traces, checkpoints
+- **Task-configurable** — discovery, extraction, judgments, and form workflows via JSON task specs
 
 ### Requirements
 
@@ -43,6 +48,7 @@ This is a **General Browser Agent** for audit and compliance evidence collection
 - **Evidence-grade outputs** — screenshots, CSVs, judgments, per-sample folders
 - **Scalable** — 50 to 1,000+ samples per batch
 - **Natural language input** — "Go to Microsoft's GitHub and get all users' GitHub usernames"
+- **Broad workflow coverage** — supports audit tasks, enrichment, form fill, graph traversal, and long-horizon collection
 
 ### Priorities (in order)
 
@@ -123,7 +129,13 @@ playwright_agent/
 ├── main.py                  # entry point: discovery → execution → merge CSV
 ├── discover.py              # phase 1: navigate start URL, paginate, write samples.csv
 ├── worker.py                # phase 2: one BrowserContext per sample + agent_loop
-├── agent_loop.py            # THE core: observe → decide → act → repeat
+├── agent_loop.py            # THE core: observe → decide → act → repeat (orchestrates helpers below)
+├── agent_prompt.py          # Token-budget history + user message construction
+├── agent_recovery.py        # Smart termination, stagnation escalation, final consolidation
+├── agent_merge.py           # deep_merge for checkpoints (id-aware list merge)
+├── agent_llm_retry.py       # Retryable LLM error classification
+├── agent_navigation.py      # Pagination detection, batch DOM safety
+├── agent_dispatch.py        # Playwright execution for one action
 ├── memory.py                # Long-term memory: patterns + failures, LLM-distilled
 ├── config.py                # Environment config (.env settings)
 │
@@ -332,11 +344,11 @@ for step in range(task_spec.max_steps):         ← default 25, configurable
        response = anthropic.messages.create(
            system   = task_spec.system_prompt       ← static, prompt-cached
            messages = build_prompt(page_state, fitted_history, task_spec)  # 5-25 items, budget-fitted
-           tools    = action_tool_schema()           # 10 actions with reflection fields
+           tools    = action_tool_schema(include_reflection=config.REFLECTION_MODE == "full")
            tool_choice = {"type": "any"}            ← forces structured output
        )
        action = AgentAction(**response.tool_input)
-       # Each action includes evaluation_previous_step, memory_update, next_goal
+       # Reflection fields optional in schema when REFLECTION_MODE=light
        history.append(action)
 
     3. ACT

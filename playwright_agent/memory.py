@@ -249,6 +249,20 @@ class MemoryStore:
         self._save()
         return True
 
+    @staticmethod
+    def _heuristic_pattern(steps_list: list[dict]) -> dict:
+        """Mechanical pattern when LLM distillation is disabled or fails."""
+        ok_actions = [s.get("action", "") for s in steps_list
+                      if "failed" not in str(s.get("result", "")).lower()[:50]]
+        failed_actions = [s.get("action", "") for s in steps_list
+                          if "failed" in str(s.get("result", "")).lower()[:50]]
+        return {
+            "task_type": "general",
+            "action_sequence": list(dict.fromkeys(ok_actions))[:7],
+            "tips": [],
+            "avoid": [f"{a} failed" for a in dict.fromkeys(failed_actions)][:3],
+        }
+
     async def _distill(
         self,
         client: AsyncAnthropic,
@@ -258,6 +272,9 @@ class MemoryStore:
         total_steps: int,
     ) -> dict | None:
         """Use fast model to extract a compact pattern from the full action log."""
+        if not config.ENABLE_MEMORY_DISTILLATION:
+            return self._heuristic_pattern(steps_list)
+
         def _format_step(s: dict) -> str:
             result_str = str(s.get("result", ""))
             failed = "failed" in result_str.lower()[:50]
@@ -293,13 +310,4 @@ class MemoryStore:
         except Exception:
             pass
 
-        ok_actions = [s.get("action", "") for s in steps_list
-                      if "failed" not in str(s.get("result", "")).lower()[:50]]
-        failed_actions = [s.get("action", "") for s in steps_list
-                         if "failed" in str(s.get("result", "")).lower()[:50]]
-        return {
-            "task_type": "general",
-            "action_sequence": list(dict.fromkeys(ok_actions))[:7],
-            "tips": [],
-            "avoid": [f"{a} failed" for a in dict.fromkeys(failed_actions)][:3],
-        }
+        return self._heuristic_pattern(steps_list)

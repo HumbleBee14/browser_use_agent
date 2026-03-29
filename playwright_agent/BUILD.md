@@ -36,7 +36,8 @@ cp .env.example .env
 | `MAX_CONCURRENT` | No | `5` | Max parallel browser contexts |
 | `HEADLESS` | No | `false` | Set `true` for CI/server |
 | `AUTH_STORAGE_STATE` | No | — | Path to Playwright auth state JSON |
-| `REFLECTION_MODE` | No | `full` | `full` (structured reflection) or `light` (minimal, saves tokens) |
+| `REFLECTION_MODE` | No | `light` | `light` (default: slimmer tool schema + prompt) or `full` (reflection in tools + history) |
+| `ENABLE_MEMORY_DISTILLATION` | No | `true` | After success, Haiku distills patterns (`false` = heuristic only, no extra LLM call) |
 | `FINALIZE_ON_FAILURE` | No | `true` | Best-effort consolidation call on exhaustion/failure |
 | `ENABLE_FALLBACK_LLM` | No | `false` | Try fallback model on retryable primary failures |
 | `FALLBACK_LLM_MODEL` | No | `claude-haiku-4-5` | Which model to fall back to |
@@ -51,6 +52,12 @@ playwright_agent/
 ├── discover.py          # Phase 1: paginate → samples.csv
 ├── worker.py            # Phase 2: one BrowserContext per sample
 ├── agent_loop.py        # THE core: observe → reflect → decide → act → repeat
+├── agent_prompt.py      # Token-budget history + user message builder
+├── agent_recovery.py    # Termination checks, stagnation notices, final consolidation
+├── agent_merge.py       # deep_merge for save_progress / done (id-aware lists)
+├── agent_llm_retry.py   # Retryable vs non-retryable LLM errors
+├── agent_navigation.py  # Pagination + multi-action batch safety helpers
+├── agent_dispatch.py    # Playwright execution for one AgentAction
 ├── config.py            # Environment config (all .env settings)
 ├── memory.py            # Long-term memory: patterns + failures, LLM-distilled
 ├── task_planner.py      # Natural language → structured task spec
@@ -79,7 +86,7 @@ playwright_agent/
 │   ├── run_YYYY-MM-DD_HHMMSS.log
 │   └── run_YYYY-MM-DD_HHMMSS.jsonl
 │
-├── tests/               # Regression tests (101 tests)
+├── tests/               # Regression tests (108+ tests)
 │   ├── test_phase1.py   # Tools + models
 │   ├── test_phase2.py   # DOM extractor + vision
 │   ├── test_phase3.py   # Agent loop + reflection + recovery + batching

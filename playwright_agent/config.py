@@ -47,8 +47,11 @@ MEMORY_DIR: Path = Path(__file__).parent / "memory"
 MAX_PATTERNS_PER_DOMAIN: int = 5
 
 # --- Agent behavior ---
-REFLECTION_MODE: str = os.getenv("REFLECTION_MODE", "full")  # "full" or "light"
+# Default "light" saves tool-schema + prompt tokens; use "full" for long-horizon / hard tasks.
+REFLECTION_MODE: str = os.getenv("REFLECTION_MODE", "light")  # "full" or "light"
 FINALIZE_ON_FAILURE: bool = os.getenv("FINALIZE_ON_FAILURE", "true").lower() == "true"
+# After successful runs, optional Haiku distillation into memory/patterns.json (latency + tiny cost).
+ENABLE_MEMORY_DISTILLATION: bool = os.getenv("ENABLE_MEMORY_DISTILLATION", "true").lower() == "true"
 ENABLE_FALLBACK_LLM: bool = os.getenv("ENABLE_FALLBACK_LLM", "false").lower() == "true"
 FALLBACK_LLM_MODEL: str = os.getenv("FALLBACK_LLM_MODEL", "claude-haiku-4-5")
 ENABLE_MULTI_ACTIONS: bool = os.getenv("ENABLE_MULTI_ACTIONS", "false").lower() == "true"

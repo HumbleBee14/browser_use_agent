@@ -297,7 +297,7 @@ async def run(args: argparse.Namespace) -> None:
     max_concurrent = args.concurrency or config.MAX_CONCURRENT
 
     console.print()
-    console.print("[bold]Browser Evidence Agent[/bold]")
+    console.print("[bold]Browser Workflow Agent[/bold]")
     console.print(f"  Task:        {task_spec.task_id}")
     console.print(f"  Model:       {config.LLM_MODEL}")
     console.print(f"  Concurrency: {max_concurrent}")
@@ -369,7 +369,7 @@ async def run(args: argparse.Namespace) -> None:
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Browser Evidence Agent — collect structured evidence from any website"
+        description="Browser Workflow Agent — run structured browser workflows and collect reviewable evidence"
     )
     parser.add_argument("--task", help="Path to task spec JSON")
     parser.add_argument("--prompt", help="Natural language instruction (auto-generates task spec)")
