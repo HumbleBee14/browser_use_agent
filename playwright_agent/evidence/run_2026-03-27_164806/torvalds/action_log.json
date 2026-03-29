@@ -1,0 +1,36 @@
+[
+  {
+    "step": 1,
+    "thinking": "",
+    "action": "screenshot",
+    "params": {
+      "label": "profile"
+    },
+    "result": "Screenshot saved: 01_profile.png (sha256: d64ddb275193...)",
+    "url": "https://github.com/torvalds",
+    "timestamp": "2026-03-27T23:48:21.047306Z"
+  },
+  {
+    "step": 2,
+    "thinking": "",
+    "action": "done",
+    "params": {
+      "extracted": {
+        "display_name": "Linus Torvalds",
+        "location": null,
+        "followers_count": "293k",
+        "following_count": "0",
+        "pinned_repos": [
+          "linux",
+          "GuitarPedal",
+          "uemacs",
+          "AudioNoise",
+          "HunspellColorize"
+        ]
+      }
+    },
+    "result": "Action: done",
+    "url": "https://github.com/torvalds",
+    "timestamp": "2026-03-27T23:48:23.878247Z"
+  }
+]

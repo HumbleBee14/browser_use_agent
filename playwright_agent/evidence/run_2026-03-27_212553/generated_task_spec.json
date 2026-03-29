@@ -1,0 +1,37 @@
+{
+  "task_id": "playwright_stargazers_profiles",
+  "phase": "execution",
+  "start_url": "",
+  "system_prompt": "You are a browser agent. Navigate to https://github.com/microsoft/playwright/stargazers. Take a screenshot labeled 'stargazers'. Read the page state to identify the first 3 users listed on the stargazers page. For each of the 3 users (in order): 1) Click their profile link (their avatar or username). 2) Wait for their profile page to load. 3) Read the page state and extract: username (from URL or displayed handle), display_name (their full name if shown), bio, company, and follower count. 4) Take a screenshot labeled 'profile'. 5) Call save_progress with the data collected so far (all users extracted up to this point as an array in the 'users' field). 6) Navigate back to https://github.com/microsoft/playwright/stargazers and proceed to the next user. After all 3 users are processed, call done with the complete 'users' array. Set any missing fields to null.",
+  "goal": "Extract username, display_name, bio, company, and follower_count for the first 3 users who starred the microsoft/playwright repository.",
+  "keywords": [
+    "stargazers",
+    "followers",
+    "bio",
+    "company",
+    "profile",
+    "avatar",
+    "username"
+  ],
+  "output_schema": {
+    "users": "array"
+  },
+  "required_fields": [
+    "users"
+  ],
+  "required_artifacts": [
+    "stargazers",
+    "profile"
+  ],
+  "max_steps": 40,
+  "max_time_seconds": 0,
+  "expected_items": 0,
+  "max_consecutive_network_errors": 5,
+  "judgment_required": false,
+  "judgment_question": null,
+  "judgment_output_schema": null,
+  "pagination": false,
+  "stop_condition": "",
+  "input_schema": {},
+  "auth_profile": null
+}

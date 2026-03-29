@@ -1,0 +1,15 @@
+{
+  "sample_id": "gvanrossum",
+  "status": "failed",
+  "steps": 0,
+  "extracted": {},
+  "artifacts": [],
+  "judgment": null,
+  "flagged": true,
+  "notes": [],
+  "errors": [
+    "Initial navigation failed: Navigation error: Page.goto: net::ERR_NETWORK_CHANGED at https://github.com/gvanrossum\nCall log:\n  - navigating to \"https://github.com/gvanrossum\", waiting until \"domcontentloaded\"\n"
+  ],
+  "started_at": "2026-03-28T02:37:03.052856Z",
+  "finished_at": "2026-03-28T02:37:13.228561Z"
+}

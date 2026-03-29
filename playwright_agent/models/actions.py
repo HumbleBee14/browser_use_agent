@@ -1,4 +1,4 @@
-"""Action schema — the 9 typed actions the agent can take.
+"""Action schema — the 10 typed actions the agent can take.
 
 Claude always returns one of these via tool_choice={"type":"any"}.
 No free-form prose. If it can't proceed, it returns "fail" with a note.
@@ -83,7 +83,7 @@ class SampleResult(BaseModel):
 
 
 def action_tool_schema() -> list[dict]:
-    """Generate Anthropic tool_use schema for the 9 agent actions.
+    """Generate Anthropic tool_use schema for the 10 agent actions.
 
     This is sent to Claude in every LLM call so it can only return
     structured tool calls, never free-form prose.

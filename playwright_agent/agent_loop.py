@@ -152,7 +152,9 @@ async def run(
             status, reason = termination
             log.warning(f"Smart termination | status={status} | {reason}")
             if accumulated:
-                output_mgr.write_checkpoint(step, accumulated, progress_notes, status=status)
+                output_mgr.write_checkpoint(
+                    step, accumulated, progress_notes, max_steps=effective_max, status=status
+                )
             output_mgr.write_result(
                 status=status,
                 extracted=accumulated or {},
@@ -353,7 +355,6 @@ async def run(
                     progress["exhausted_pages"].append(current_url)
             result_desc = f"new_data={data_changed} | {note} | keys={list(partial.keys())}"
             log.info(f"Step {step} | save_progress #{items_collected} | {result_desc}")
-            output_mgr.write_checkpoint(step, accumulated, progress_notes)
 
             # Log save_progress into action_log.json (same path as all other actions)
             output_mgr.log_step(StepRecord(
@@ -372,6 +373,7 @@ async def run(
                 "params": {"note": note, "keys": list(partial.keys())},
                 "result": result_desc,
             })
+            output_mgr.write_checkpoint(step, accumulated, progress_notes, max_steps=effective_max)
 
             # Follow-up system notice based on outcome
             if task_spec.expected_items > 0 and items_collected >= task_spec.expected_items:
@@ -427,7 +429,7 @@ async def run(
 
         # ---- AUTO-CHECKPOINT: write checkpoint.json every N steps ----
         if step > 0 and step % CHECKPOINT_INTERVAL == 0:
-            output_mgr.write_checkpoint(step, accumulated, progress_notes)
+            output_mgr.write_checkpoint(step, accumulated, progress_notes, max_steps=effective_max)
 
         # Log the step
         output_mgr.log_step(StepRecord(
@@ -606,7 +608,9 @@ async def run(
         if steps_since_data >= WATCHDOG_STALL_LIMIT and step < effective_max:
             log.warning(f"Step {step} | Watchdog: {steps_since_data} steps without new data")
             if accumulated:
-                output_mgr.write_checkpoint(step, accumulated, progress_notes, status="watchdog_stall")
+                output_mgr.write_checkpoint(
+                    step, accumulated, progress_notes, max_steps=effective_max, status="watchdog_stall"
+                )
             history.append({
                 "step": step,
                 "action": "system_notice",
@@ -621,7 +625,9 @@ async def run(
     # Exhausted max_steps without done/fail
     log.warning(f"Exhausted {effective_max} steps (base={task_spec.max_steps}, pagination_bonus={pagination_bonus})")
     if accumulated:
-        output_mgr.write_checkpoint(step, accumulated, progress_notes, status="max_steps_exceeded")
+        output_mgr.write_checkpoint(
+            step, accumulated, progress_notes, max_steps=effective_max, status="max_steps_exceeded"
+        )
     output_mgr.write_result(
         status="failed",
         extracted=accumulated or {},

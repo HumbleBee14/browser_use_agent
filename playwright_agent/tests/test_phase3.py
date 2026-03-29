@@ -188,12 +188,12 @@ def test_judgment_extraction_from_done():
 
 # ---- prompt construction ----
 
-def test_tool_schema_all_9_actions():
-    """Tool schema should have exactly 9 tools."""
+def test_tool_schema_all_10_actions():
+    """Tool schema should have exactly 10 tools."""
     tools = action_tool_schema()
-    assert len(tools) == 9
+    assert len(tools) == 10
     names = {t["name"] for t in tools}
-    expected = {"goto", "click", "type", "scroll", "screenshot", "extract", "wait", "done", "fail"}
+    expected = {"goto", "click", "type", "scroll", "screenshot", "extract", "wait", "save_progress", "done", "fail"}
     assert names == expected
 
 

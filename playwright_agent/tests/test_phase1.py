@@ -108,8 +108,8 @@ def test_sample_input_from_csv_row_no_url():
 
 # ---------- AgentAction ----------
 
-def test_agent_action_all_9_types():
-    valid_actions = ["goto", "click", "type", "scroll", "screenshot", "extract", "wait", "done", "fail"]
+def test_agent_action_all_10_types():
+    valid_actions = ["goto", "click", "type", "scroll", "screenshot", "extract", "wait", "save_progress", "done", "fail"]
     for action_name in valid_actions:
         a = AgentAction(action=action_name)
         assert a.action == action_name
@@ -125,11 +125,12 @@ def test_agent_action_rejects_invalid_type():
 
 # ---------- Tool Schema ----------
 
-def test_tool_schema_has_9_tools():
+def test_tool_schema_has_10_tools():
     tools = action_tool_schema()
-    assert len(tools) == 9
+    assert len(tools) == 10
     names = [t["name"] for t in tools]
     assert "goto" in names
+    assert "save_progress" in names
     assert "done" in names
     assert "fail" in names
 
@@ -227,6 +228,35 @@ def test_output_manager_action_log_content():
         assert len(log) == 2
         assert log[0]["action"] == "goto"
         assert log[1]["action"] == "screenshot"
+
+
+def test_checkpoint_flushes_live_action_log_and_budget():
+    """checkpoint.json should reflect the current trace and step budget."""
+    with tempfile.TemporaryDirectory() as tmp:
+        om = OutputManager(Path(tmp), "s1")
+        om.log_step(StepRecord(
+            step=3,
+            action="save_progress",
+            params={"extracted": {"contributors": [{"name": "Alice"}]}},
+            result="new_data=True | contributor 1 saved",
+            url="https://github.com/example/repo",
+        ))
+        om.write_checkpoint(
+            step=3,
+            accumulated={"contributors": [{"name": "Alice"}]},
+            progress_notes=["Contributor 1 saved"],
+            max_steps=40,
+        )
+
+        sample_dir = Path(tmp) / "s1"
+        checkpoint = json.loads((sample_dir / "checkpoint.json").read_text())
+        action_log = json.loads((sample_dir / "action_log.json").read_text())
+
+        assert checkpoint["step"] == 3
+        assert checkpoint["max_steps"] == 40
+        assert checkpoint["steps_logged"] == 1
+        assert checkpoint["accumulated_data"]["contributors"][0]["name"] == "Alice"
+        assert action_log[0]["action"] == "save_progress"
 
 
 # ---------- CSV Merge ----------

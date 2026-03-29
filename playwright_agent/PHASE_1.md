@@ -12,7 +12,7 @@
 | File | What | Key Types |
 |------|------|-----------|
 | `models/task.py` | Task spec + sample input | `TaskSpec`, `SampleInput`, `load_task_spec()` |
-| `models/actions.py` | Agent actions + evidence | `AgentAction` (9 actions), `ActionResult`, `StepRecord`, `EvidenceArtifact`, `SampleResult`, `action_tool_schema()` |
+| `models/actions.py` | Agent actions + evidence | `AgentAction` (10 actions), `ActionResult`, `StepRecord`, `EvidenceArtifact`, `SampleResult`, `action_tool_schema()` |
 
 ### Tools (browser + output)
 
@@ -35,8 +35,8 @@
 
 ## Design Decisions
 
-### AgentAction — 9 typed actions, no free-form prose
-Claude returns exactly one of: `goto`, `click`, `type`, `scroll`, `screenshot`, `extract`, `wait`, `done`, `fail`. Enforced via `tool_choice={"type":"any"}`. The `action_tool_schema()` function generates the Anthropic tool_use format.
+### AgentAction — 10 typed actions, no free-form prose
+Claude returns exactly one of: `goto`, `click`, `type`, `scroll`, `screenshot`, `extract`, `wait`, `save_progress`, `done`, `fail`. Enforced via `tool_choice={"type":"any"}`. The `action_tool_schema()` function generates the Anthropic tool_use format.
 
 ### Element resolution — 3 strategies
 `click`, `type_text`, `extract_text` all try: index-based → text-based → CSS selector. Index-based uses the DOM extractor's element map (built in Phase 2). Text-based uses `page.get_by_text()`. CSS selector is last resort.
@@ -57,7 +57,7 @@ No concurrent writes. `main.py` reads all `result.json` files after workers fini
 ```
 TaskSpec: unique_name | phase=execution | max_steps=25
 SampleInput: test_001 | url=https://github.com/torvalds | extra={'name': 'Linus'}
-Tool schema: 9 tools: ['goto', 'click', 'type', 'scroll', 'screenshot', 'extract', 'wait', 'done', 'fail']
+Tool schema: 10 tools: ['goto', 'click', 'type', 'scroll', 'screenshot', 'extract', 'wait', 'save_progress', 'done', 'fail']
 Config: model=claude-sonnet-4-6 | evidence=.../playwright_agent/evidence
 OutputManager: saved 01_test_page.png | sha256=93dd79311f0abf48...
 Result written: done | test_sample | artifacts=1

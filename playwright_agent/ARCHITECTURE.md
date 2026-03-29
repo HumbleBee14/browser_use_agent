@@ -384,7 +384,7 @@ USER (rebuilt every turn):
   Take the single best next action.
 ```
 
-### Action Schema — 9 Typed Actions
+### Action Schema — 10 Typed Actions
 
 ```python
 class AgentAction(BaseModel):
@@ -396,6 +396,7 @@ class AgentAction(BaseModel):
         "screenshot",  # capture full-page evidence screenshot
         "extract",     # read text from an element into history
         "wait",        # wait for an element to appear
+        "save_progress",  # checkpoint partial data without stopping
         "done",        # task complete — write extracted data
         "fail",        # unrecoverable — write reason and stop
     ]

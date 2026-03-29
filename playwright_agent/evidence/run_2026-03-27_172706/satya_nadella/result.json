@@ -1,0 +1,64 @@
+{
+  "sample_id": "satya_nadella",
+  "status": "failed",
+  "steps": 12,
+  "extracted": {},
+  "artifacts": [
+    {
+      "filename": "01_profile_top.png",
+      "sha256": "3472f809c1566d5a7e906a52b4b3f163ed19c3323c8a85e330c3eb9c222ee670",
+      "source_url": "https://www.linkedin.com/in/satyanadella/",
+      "timestamp": "2026-03-28T00:27:24.268518Z"
+    },
+    {
+      "filename": "02_profile_top.png",
+      "sha256": "a97556b5c83f3b13bd2ad6e716b4a878bc115a0cc1a767f08299cd150e75cf9a",
+      "source_url": "https://www.linkedin.com/in/satyanadella/",
+      "timestamp": "2026-03-28T00:27:25.935009Z"
+    },
+    {
+      "filename": "03_profile_top.png",
+      "sha256": "7769470ab2b04be4e5e575da21f0636a3a55427af2ab0bf36fc32961b26c9edb",
+      "source_url": "https://www.linkedin.com/in/satyanadella/",
+      "timestamp": "2026-03-28T00:27:27.299584Z"
+    },
+    {
+      "filename": "04_profile_top.png",
+      "sha256": "f086870c33e5a944d2aa7c843c0a42806713201b0e09eabbec01a8c556d0c4bd",
+      "source_url": "https://www.linkedin.com/in/satyanadella/",
+      "timestamp": "2026-03-28T00:27:31.090212Z"
+    },
+    {
+      "filename": "05_profile_top.png",
+      "sha256": "c4939f1c879dc8dbfbf6dca459bf9d28b6b1a6129a5d37cd5ca2e6e6529e2d21",
+      "source_url": "https://www.linkedin.com/in/satyanadella/",
+      "timestamp": "2026-03-28T00:27:36.862641Z"
+    },
+    {
+      "filename": "06_profile_top.png",
+      "sha256": "1326b5c3c3d57c4b155c620dad5ea90785bd5264045b9f60d8f374a76f19b105",
+      "source_url": "https://www.linkedin.com/in/satyanadella/",
+      "timestamp": "2026-03-28T00:27:50.166411Z"
+    },
+    {
+      "filename": "07_profile_top.png",
+      "sha256": "0dbeb52288b7f89d9de813d856109ee802c272c268a3c47a767092f45d78112d",
+      "source_url": "https://www.linkedin.com/in/satyanadella/",
+      "timestamp": "2026-03-28T00:27:53.308339Z"
+    },
+    {
+      "filename": "08_profile_top.png",
+      "sha256": "40e943fa99ef77dfef2d828c08d89dd7b0c1f5b826a95cf3a8d3f371178b854c",
+      "source_url": "https://www.linkedin.com/in/satyanadella/",
+      "timestamp": "2026-03-28T00:27:55.311602Z"
+    }
+  ],
+  "judgment": null,
+  "flagged": true,
+  "notes": [],
+  "errors": [
+    "Exhausted 12 steps without completing"
+  ],
+  "started_at": "2026-03-28T00:27:07.601909Z",
+  "finished_at": "2026-03-28T00:27:55.312784Z"
+}

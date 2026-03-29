@@ -1,0 +1,70 @@
+{
+  "sample_id": "vscode_contributors",
+  "status": "in_progress",
+  "step": 35,
+  "max_steps": null,
+  "accumulated_data": {
+    "contributors": [
+      {
+        "username": "bpasero",
+        "display_name": "Benjamin Pasero",
+        "company": "Microsoft",
+        "location": "Zurich, Switzerland",
+        "public_repos": 134,
+        "followers": 3000
+      }
+    ],
+    "total_audited": 1,
+    "repo_name": "microsoft/vscode"
+  },
+  "progress_notes": [
+    "Completed contributor 1: bpasero. Now need to visit contributors 2 and 3."
+  ],
+  "artifacts_so_far": [
+    {
+      "filename": "01_contributors_list.png",
+      "sha256": "0281637daaf65017f8c5b7b61a3efcbdf47de9e5693867aed6f81e16e328b359",
+      "source_url": "https://github.com/microsoft/vscode/graphs/contributors",
+      "timestamp": "2026-03-28T03:01:50.311012Z"
+    },
+    {
+      "filename": "02_contributors_list.png",
+      "sha256": "150ed6f3b633ea88d58fff91652cb3f67117b4a684595303a3afb5efde1b65db",
+      "source_url": "https://github.com/microsoft/vscode/graphs/contributors",
+      "timestamp": "2026-03-28T03:02:16.179460Z"
+    },
+    {
+      "filename": "03_contributors_list.png",
+      "sha256": "3325a251a885ef5981e3d902bc61fdb6279032f08871f9018b8be825ae2324a8",
+      "source_url": "https://github.com/microsoft/vscode/graphs/contributors",
+      "timestamp": "2026-03-28T03:02:20.004822Z"
+    },
+    {
+      "filename": "04_contributors_list.png",
+      "sha256": "90fa28c2324d701a9bab9e3fb1053bd8fc26fed82a4b447619cb6683ab371c5d",
+      "source_url": "https://github.com/microsoft/vscode/graphs/contributors",
+      "timestamp": "2026-03-28T03:02:31.566567Z"
+    },
+    {
+      "filename": "05_contributors_list.png",
+      "sha256": "6370b0262b7f1e4eda89f4314540b09ac3fcbc3d2fcd09c7df273eda4f5f6d91",
+      "source_url": "https://github.com/microsoft/vscode/graphs/contributors",
+      "timestamp": "2026-03-28T03:03:25.162309Z"
+    },
+    {
+      "filename": "06_contributors_list.png",
+      "sha256": "684a35f9f8ce2ed13fa7f075952d111c589c6e02d6cdb0e36c17321761739942",
+      "source_url": "https://github.com/microsoft/vscode/graphs/contributors",
+      "timestamp": "2026-03-28T03:04:12.151499Z"
+    },
+    {
+      "filename": "07_profile_bpasero.png",
+      "sha256": "dd8188841dc054ce9224c45021ac8999c4822cfaa4876612280e0635501d886a",
+      "source_url": "https://github.com/bpasero",
+      "timestamp": "2026-03-28T03:04:47.109269Z"
+    }
+  ],
+  "steps_logged": 34,
+  "started_at": "2026-03-28T03:01:26.725052Z",
+  "updated_at": "2026-03-28T03:05:02.463373Z"
+}

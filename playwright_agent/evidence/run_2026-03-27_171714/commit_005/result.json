@@ -1,0 +1,49 @@
+{
+  "sample_id": "commit_005",
+  "status": "done",
+  "steps": 4,
+  "extracted": {
+    "commit_sha": "b98ad1eadb1c4a959643feacdc14b14ce6db41dc",
+    "pr_number": "305796",
+    "pr_creator": "pwang347",
+    "approvers": [
+      "joshspicer"
+    ],
+    "merger": "pwang347",
+    "checks_passed": 18,
+    "checks_failed": 0,
+    "merged_with_failures": false,
+    "ci_failure_details": null,
+    "jira_url": null
+  },
+  "artifacts": [
+    {
+      "filename": "01_commit_page.png",
+      "sha256": "14e55069a51e9a089dc8fbb165d0238530548816365ae79f69e1ea497881cccb",
+      "source_url": "https://github.com/microsoft/vscode/commit/b98ad1eadb1c4a959643feacdc14b14ce6db41dc",
+      "timestamp": "2026-03-28T00:18:25.775213Z"
+    },
+    {
+      "filename": "02_pr_page.png",
+      "sha256": "0d4131b156b61b796a19a36225ae1690161f4fa5549ab7514d73bee8af75fc0a",
+      "source_url": "https://github.com/microsoft/vscode/pull/305796",
+      "timestamp": "2026-03-28T00:18:52.028729Z"
+    }
+  ],
+  "judgment": {
+    "answer": "yes",
+    "confidence": 0.95,
+    "reasoning": "The commit is associated with PR #305796 created by pwang347. The PR was approved by joshspicer ('joshspicer approved these changes'). All 18/18 checks passed (no failures). The PR was merged by pwang347. Copilot also left review comments. All indicators point to a properly reviewed and checked merge.",
+    "evidence_refs": [
+      "link[30]: 'joshspicer approved these changes'",
+      "img[2]: '18 / 18 checks OK'",
+      "link[39]: 'pwang347' (PR creator)",
+      "link[80]: 'pwang347' (merger)"
+    ]
+  },
+  "flagged": false,
+  "notes": [],
+  "errors": [],
+  "started_at": "2026-03-28T00:17:56.033770Z",
+  "finished_at": "2026-03-28T00:18:57.572684Z"
+}

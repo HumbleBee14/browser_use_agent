@@ -1,0 +1,15 @@
+{
+  "sample_id": "commit_006",
+  "status": "failed",
+  "steps": 0,
+  "extracted": {},
+  "artifacts": [],
+  "judgment": null,
+  "flagged": true,
+  "notes": [],
+  "errors": [
+    "Initial navigation failed: Navigation error: Page.goto: net::ERR_NAME_NOT_RESOLVED at https://github.com/microsoft/vscode/commit/ca0ea977c63e180159c921986731aa3b71683d74\nCall log:\n  - navigating to \"https://github.com/microsoft/vscode/commit/ca0"
+  ],
+  "started_at": "2026-03-28T00:16:16.388466Z",
+  "finished_at": "2026-03-28T00:16:25.453113Z"
+}

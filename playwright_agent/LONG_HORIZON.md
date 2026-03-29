@@ -1,6 +1,6 @@
 # Long-Horizon Task Support
 
-**Branch:** `long-horizon-test` (will merge to `main`)
+**Status:** merged into `main`
 
 ---
 
@@ -43,12 +43,16 @@ Written to the sample's evidence folder every 5 steps and on every `save_progres
   "sample_id": "pr_chain_audit",
   "status": "in_progress",
   "step": 16,
+  "max_steps": 50,
   "accumulated_data": { "prs": [{ "title": "Fix editor", "author": "alice" }, ...] },
   "progress_notes": ["PR #1 done", "PR #2 done"],
   "artifacts_so_far": [{ "filename": "01_pr_overview.png", "sha256": "..." }],
+  "steps_logged": 16,
   "updated_at": "2026-03-27T18:30:00Z"
 }
 ```
+
+`action_log.json` is also flushed at checkpoint time, so long-running tasks keep a live step trace on disk instead of only writing it at final completion.
 
 Watch it live while the agent runs:
 

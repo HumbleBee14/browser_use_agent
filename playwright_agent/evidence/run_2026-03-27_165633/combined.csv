@@ -1,0 +1,2 @@
+sample_id,status,ticket_number,title,assignee,status,due_date
+ticket_001,open,305609,コマンドラインのチャットの出力が見えなくなる。,,open,

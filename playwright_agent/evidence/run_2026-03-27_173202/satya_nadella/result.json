@@ -1,0 +1,39 @@
+{
+  "sample_id": "satya_nadella",
+  "status": "done",
+  "steps": 4,
+  "extracted": {
+    "linkedin_url": "https://www.linkedin.com/in/satyanadella/",
+    "full_name": "Satya Nadella",
+    "headline": "Chairman and CEO at Microsoft",
+    "current_company": "Microsoft",
+    "school": "The University of Chicago Booth School of Business",
+    "tenure": null
+  },
+  "artifacts": [
+    {
+      "filename": "01_profile_top.png",
+      "sha256": "a35f8923a296a10922f5b4423e6325e3f85328a62f1e8672128ef3b1a1053801",
+      "source_url": "https://www.linkedin.com/in/satyanadella/",
+      "timestamp": "2026-03-28T00:32:24.536904Z"
+    },
+    {
+      "filename": "02_profile_top.png",
+      "sha256": "19c5eac27117a467b7bc0beae78c1d94c7d939d70170053b201a909fb09934e8",
+      "source_url": "https://www.linkedin.com/in/satyanadella/",
+      "timestamp": "2026-03-28T00:32:26.871547Z"
+    },
+    {
+      "filename": "03_profile_top.png",
+      "sha256": "5db2f8fb02857c981bd3c1101ed13a046342f07416597203dc3cf0fc0c9ec273",
+      "source_url": "https://www.linkedin.com/in/satyanadella/",
+      "timestamp": "2026-03-28T00:32:29.066739Z"
+    }
+  ],
+  "judgment": null,
+  "flagged": false,
+  "notes": [],
+  "errors": [],
+  "started_at": "2026-03-28T00:32:03.993614Z",
+  "finished_at": "2026-03-28T00:32:31.531595Z"
+}

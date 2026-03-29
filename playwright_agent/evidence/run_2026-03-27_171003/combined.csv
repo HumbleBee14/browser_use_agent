@@ -1,0 +1,7 @@
+sample_id,status,commit_sha,pr_number,pr_creator,approvers,merger,checks_passed,checks_failed,merged_with_failures,ci_failure_details,jira_url
+commit_001,done,9986a4378e3332af88cb8c4496fbb6b7231fd189,305569,benibenj,"[""justschen""]",benibenj,18,0,False,,
+commit_002,done,9c09f68f1b367d1b11afcf473ee615cc465f0751,305156,isidorn,"[""dmitrivMS""]",isidorn,18,0,False,"Earlier commits had CI failures (13/18 and 14/18 checks OK) mentioned by meganrogge, but the final commit (404856f) passed all 18/18 checks before merge.",
+commit_003,done,1049842e2877640c538486e77d5ab3dd0c00719c,305569,benibenj,"[""justschen""]",benibenj,18,0,False,,
+commit_004,done,bfd8d7407c4be82f39764a9f7e63f9a4a14a0bd2,,,,,,,,,
+commit_005,done,404856f2bf3b1ff37b89684924a68498fd68fa69,,,,,,,,,
+commit_006,done,c25b1513f21aef0e12cb25e4de4e2b13b8db5abb,,,,,,,,,

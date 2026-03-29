@@ -79,11 +79,31 @@ class OutputManager:
         """Append a step to the action log."""
         self._action_log.append(record)
 
+    def _write_json_atomic(self, path: Path, data: str) -> None:
+        """Atomically replace a JSON file on disk."""
+        tmp = path.with_suffix(path.suffix + ".tmp")
+        tmp.write_text(data, encoding="utf-8")
+        tmp.replace(path)
+
+    def _flush_action_log(self) -> None:
+        """Persist the current in-memory action log.
+
+        Long-horizon runs rely on checkpoints for live monitoring and crash
+        recovery. Writing the action log alongside checkpoints keeps the trace
+        aligned with what checkpoint.json reports.
+        """
+        path = self.sample_dir / "action_log.json"
+        log_data = json.dumps(
+            [r.model_dump() for r in self._action_log], indent=2, default=str
+        )
+        self._write_json_atomic(path, log_data)
+
     def write_checkpoint(
         self,
         step: int,
         accumulated: dict,
         progress_notes: list[str],
+        max_steps: int | None = None,
         status: str = "in_progress",
     ) -> None:
         """Write a live checkpoint file that updates as the agent runs.
@@ -91,11 +111,12 @@ class OutputManager:
         This file is overwritten each time — always reflects latest state.
         Useful for monitoring long-horizon tasks in real-time.
         """
+        self._flush_action_log()
         checkpoint = {
             "sample_id": self.sample_id,
             "status": status,
             "step": step,
-            "max_steps": None,  # filled by caller if needed
+            "max_steps": max_steps,
             "accumulated_data": accumulated,
             "progress_notes": progress_notes,
             "artifacts_so_far": [a.model_dump() for a in self._artifacts],
@@ -104,11 +125,7 @@ class OutputManager:
             "updated_at": datetime.utcnow().isoformat() + "Z",
         }
         path = self.sample_dir / "checkpoint.json"
-        tmp = self.sample_dir / "checkpoint.json.tmp"
-        tmp.write_text(
-            json.dumps(checkpoint, indent=2, default=str), encoding="utf-8"
-        )
-        tmp.replace(path)
+        self._write_json_atomic(path, json.dumps(checkpoint, indent=2, default=str))
 
     def write_result(
         self,
@@ -141,12 +158,8 @@ class OutputManager:
             [r.model_dump() for r in self._action_log], indent=2, default=str
         )
 
-        result_tmp = self.sample_dir / "result.json.tmp"
-        log_tmp = self.sample_dir / "action_log.json.tmp"
-        result_tmp.write_text(result_data, encoding="utf-8")
-        log_tmp.write_text(log_data, encoding="utf-8")
-        result_tmp.replace(self.sample_dir / "result.json")
-        log_tmp.replace(self.sample_dir / "action_log.json")
+        self._write_json_atomic(self.sample_dir / "result.json", result_data)
+        self._write_json_atomic(self.sample_dir / "action_log.json", log_data)
 
         return result
 

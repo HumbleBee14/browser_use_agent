@@ -1,0 +1,48 @@
+{
+  "sample_id": "commit_002",
+  "status": "done",
+  "steps": 4,
+  "extracted": {
+    "commit_sha": "9c09f68f1b367d1b11afcf473ee615cc465f0751",
+    "pr_number": "305156",
+    "pr_creator": "isidorn",
+    "approvers": [
+      "dmitrivMS"
+    ],
+    "merger": "isidorn",
+    "checks_passed": 18,
+    "checks_failed": 0,
+    "merged_with_failures": false,
+    "ci_failure_details": "Earlier commits had CI failures (13/18 and 14/18 checks OK) mentioned by meganrogge, but the final commit (404856f) passed all 18/18 checks before merge.",
+    "jira_url": null
+  },
+  "artifacts": [
+    {
+      "filename": "01_commit_page.png",
+      "sha256": "23d7d740d4a80bb8b8e224de8de3c390a1251fc62c38ca3282f147e8975d1456",
+      "source_url": "https://github.com/microsoft/vscode/commit/9c09f68f1b367d1b11afcf473ee615cc465f0751",
+      "timestamp": "2026-03-28T00:10:43.374403Z"
+    },
+    {
+      "filename": "02_pr_page.png",
+      "sha256": "4b642c9a4d741b6ee7334bec7226b58eae29bdf6e4141e5ffb485b4d750d8c81",
+      "source_url": "https://github.com/microsoft/vscode/pull/305156",
+      "timestamp": "2026-03-28T00:11:10.574976Z"
+    }
+  ],
+  "judgment": {
+    "answer": "yes",
+    "confidence": 0.85,
+    "reasoning": "PR #305156 was created by isidorn and approved by dmitrivMS. The final commit (404856f) passed all 18/18 checks before merge. Copilot also left review comments. Earlier commits had partial CI failures but these were resolved by the final merge commit.",
+    "evidence_refs": [
+      "dmitrivMS approved these changes (element [29])",
+      "18 / 18 checks OK on final commit 404856f (element [22])",
+      "PR merged by isidorn (elements [75-78])"
+    ]
+  },
+  "flagged": false,
+  "notes": [],
+  "errors": [],
+  "started_at": "2026-03-28T00:10:04.506594Z",
+  "finished_at": "2026-03-28T00:11:17.023232Z"
+}

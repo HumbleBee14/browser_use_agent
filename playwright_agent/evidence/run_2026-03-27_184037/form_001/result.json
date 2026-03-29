@@ -1,0 +1,62 @@
+{
+  "sample_id": "form_001",
+  "status": "done",
+  "steps": 25,
+  "extracted": {
+    "form_submitted": true,
+    "response_status": "200 OK",
+    "fields_filled": [
+      "custname",
+      "custtel",
+      "custemail",
+      "delivery",
+      "comments",
+      "size",
+      "topping"
+    ]
+  },
+  "artifacts": [
+    {
+      "filename": "01_empty_form.png",
+      "sha256": "354a51b51c0cb04409fb831eeed99cc1c371d1d3075608c637ef0aef55954ee8",
+      "source_url": "https://httpbin.org/forms/post",
+      "timestamp": "2026-03-28T01:40:48.316624Z"
+    },
+    {
+      "filename": "02_empty_form.png",
+      "sha256": "a8f8f08e5ecdb300ee69f3bd67c103bd0602941d88f9efd07abd93942408bd92",
+      "source_url": "https://httpbin.org/forms/post",
+      "timestamp": "2026-03-28T01:41:02.710995Z"
+    },
+    {
+      "filename": "03_empty_form.png",
+      "sha256": "41189bba3423db301293117973e3e5e7509fdaa6c9c8d26e2ae44723b979dbae",
+      "source_url": "https://httpbin.org/forms/post",
+      "timestamp": "2026-03-28T01:41:08.324313Z"
+    },
+    {
+      "filename": "04_empty_form.png",
+      "sha256": "a8f8f08e5ecdb300ee69f3bd67c103bd0602941d88f9efd07abd93942408bd92",
+      "source_url": "https://httpbin.org/forms/post",
+      "timestamp": "2026-03-28T01:41:32.163902Z"
+    },
+    {
+      "filename": "05_filled_form.png",
+      "sha256": "090bb2eb6cda5275d3ed4881fd26c57002dab5f37754fcf84665e76119b74c9d",
+      "source_url": "https://httpbin.org/forms/post",
+      "timestamp": "2026-03-28T01:42:12.025158Z"
+    },
+    {
+      "filename": "06_result.png",
+      "sha256": "d322cec67ae4cfbd40438628435f2e7804f1d813172b2af7afab0c4a837814bc",
+      "source_url": "https://httpbin.org/post",
+      "timestamp": "2026-03-28T01:42:16.964724Z"
+    }
+  ],
+  "judgment": null,
+  "flagged": false,
+  "notes": [],
+  "errors": [],
+  "started_at": "2026-03-28T01:40:39.511977Z",
+  "finished_at": "2026-03-28T01:42:19.656761Z"
+}
