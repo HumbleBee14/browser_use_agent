@@ -2,6 +2,11 @@
 
 Claude always returns one of these via tool_choice={"type":"any"}.
 No free-form prose. If it can't proceed, it returns "fail" with a note.
+
+Each action optionally includes structured reflection fields:
+- evaluation_previous_step: self-assessment of last action's outcome
+- memory_update: working memory scratchpad for continuity across steps
+- next_goal: declared intent before acting (improves recovery & planning)
 """
 
 from __future__ import annotations
@@ -34,6 +39,10 @@ class AgentAction(BaseModel):
     extracted: dict[str, Any] | None = None  # done: structured output
     note: str | None = None         # fail: reason string
     label: str | None = None        # screenshot: filename label
+    # Structured reflection (inspired by browser-use's decision hygiene)
+    evaluation_previous_step: str | None = None  # "Did my last action work?"
+    memory_update: str | None = None             # "What to remember going forward"
+    next_goal: str | None = None                 # "What I'll do next and why"
 
 
 class ActionResult(BaseModel):
@@ -54,6 +63,9 @@ class StepRecord(BaseModel):
     params: dict[str, Any] = Field(default_factory=dict)
     result: str = ""
     url: str = ""
+    evaluation: str = ""
+    memory_update: str = ""
+    next_goal: str = ""
     timestamp: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
 
@@ -88,6 +100,20 @@ def action_tool_schema() -> list[dict]:
     This is sent to Claude in every LLM call so it can only return
     structured tool calls, never free-form prose.
     """
+    REFLECTION_PROPERTIES = {
+        "evaluation_previous_step": {
+            "type": "string",
+            "description": "One sentence: did your previous action succeed or fail, and why?",
+        },
+        "memory_update": {
+            "type": "string",
+            "description": "One sentence: key fact to remember for upcoming steps.",
+        },
+        "next_goal": {
+            "type": "string",
+            "description": "One sentence: what you intend to accomplish with this action.",
+        },
+    }
     return [
         {
             "name": "goto",
@@ -96,6 +122,7 @@ def action_tool_schema() -> list[dict]:
                 "type": "object",
                 "properties": {
                     "url": {"type": "string", "description": "Full URL including https://"},
+                    **REFLECTION_PROPERTIES,
                 },
                 "required": ["url"],
             },
@@ -113,6 +140,7 @@ def action_tool_schema() -> list[dict]:
                         "type": "string",
                         "description": "Element index (e.g. '3') or visible text (e.g. 'Show all checks')",
                     },
+                    **REFLECTION_PROPERTIES,
                 },
                 "required": ["selector"],
             },
@@ -128,6 +156,7 @@ def action_tool_schema() -> list[dict]:
                         "description": "Element index or visible label of the input field",
                     },
                     "text": {"type": "string", "description": "Text to type"},
+                    **REFLECTION_PROPERTIES,
                 },
                 "required": ["selector", "text"],
             },
@@ -143,6 +172,7 @@ def action_tool_schema() -> list[dict]:
                         "enum": ["up", "down"],
                         "description": "Scroll direction",
                     },
+                    **REFLECTION_PROPERTIES,
                 },
                 "required": ["direction"],
             },
@@ -160,6 +190,7 @@ def action_tool_schema() -> list[dict]:
                         "type": "string",
                         "description": "Short label for the screenshot filename",
                     },
+                    **REFLECTION_PROPERTIES,
                 },
                 "required": ["label"],
             },
@@ -174,6 +205,7 @@ def action_tool_schema() -> list[dict]:
                         "type": "string",
                         "description": "Element index or text to locate the element",
                     },
+                    **REFLECTION_PROPERTIES,
                 },
                 "required": ["selector"],
             },
@@ -188,6 +220,7 @@ def action_tool_schema() -> list[dict]:
                         "type": "string",
                         "description": "Text or selector to wait for",
                     },
+                    **REFLECTION_PROPERTIES,
                 },
                 "required": ["selector"],
             },
@@ -211,6 +244,7 @@ def action_tool_schema() -> list[dict]:
                         "type": "string",
                         "description": "Brief note about progress (e.g. 'Completed PR #1 of 5')",
                     },
+                    **REFLECTION_PROPERTIES,
                 },
                 "required": ["extracted"],
             },
@@ -228,6 +262,7 @@ def action_tool_schema() -> list[dict]:
                         "type": "object",
                         "description": "Extracted data matching the task's output_schema",
                     },
+                    **REFLECTION_PROPERTIES,
                 },
                 "required": ["extracted"],
             },
@@ -239,6 +274,7 @@ def action_tool_schema() -> list[dict]:
                 "type": "object",
                 "properties": {
                     "note": {"type": "string", "description": "Why the task cannot be completed"},
+                    **REFLECTION_PROPERTIES,
                 },
                 "required": ["note"],
             },

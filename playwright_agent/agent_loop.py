@@ -1,16 +1,18 @@
 """The Agent Loop — the entire brain of the system.
 
-Custom ReAct cycle: OBSERVE → DECIDE → ACT → CHECK → repeat.
+Custom ReAct cycle: OBSERVE → REFLECT → DECIDE → ACT → CHECK → repeat.
 
 Everything else is scaffolding. This file is the agent.
 
 Key invariants:
 - Claude always returns a typed tool call (tool_choice=any), never prose
+- Each action includes structured reflection (evaluation, memory, next_goal)
 - History window is dynamic — fits as many recent actions as the token budget allows
 - Actions always return ActionResult, never raise
 - done/fail terminate the loop — max_steps is the hard ceiling
-- Loop detection: same (url, action) 3+ times → inject recovery nudge
-- Consecutive failures: 3+ → inject visible element list
+- Escalating recovery: gentle nudge → forceful demand → forced consolidation
+- Budget pressure: 75% warning → 90% urgency → last-step done|fail only
+- Final-response-after-failure: one last LLM call to produce best-effort output
 
 Long-horizon support:
 - save_progress action: checkpoint partial data without stopping
@@ -23,7 +25,9 @@ Long-horizon support:
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
+import re
 import time
 
 from anthropic import (
@@ -70,6 +74,17 @@ from models.actions import (
     StepRecord,
     action_tool_schema,
 )
+
+# Terminal-only tool schema (done + fail) for last-step forced consolidation
+_TERMINAL_TOOLS: list[dict] | None = None
+
+
+def _get_terminal_tools() -> list[dict]:
+    """Return tool schema restricted to done + fail only."""
+    global _TERMINAL_TOOLS
+    if _TERMINAL_TOOLS is None:
+        _TERMINAL_TOOLS = [t for t in action_tool_schema() if t["name"] in ("done", "fail")]
+    return _TERMINAL_TOOLS
 from models.task import TaskSpec, SampleInput
 from tools import browser
 from tools.output import OutputManager
@@ -120,7 +135,6 @@ async def run(
     last_summarized_idx = 0          # high-water mark: history items already summarized
     SUMMARY_INTERVAL = 10
     CHECKPOINT_INTERVAL = 5
-    WATCHDOG_STALL_LIMIT = 5         # steps without new data → force intervention
     last_data_step = 0               # last step that produced new data
     pagination_bonus = 0             # extra steps granted for pagination
 
@@ -129,6 +143,15 @@ async def run(
     network_errors = 0               # consecutive infra-level failures (timeout, DNS, etc.)
     items_collected = 0              # count of save_progress calls (proxy for items done)
     seen_screenshot_hashes: set[str] = set()  # detect duplicate screenshots
+
+    # Stagnation detection — tracks repeated identical page states
+    _last_page_sig: str = ""         # hash(url + page_state[:2000])
+    _stagnation_count: int = 0       # consecutive steps with same page signature + no new data
+    _stagnation_level: int = 0       # 0=none, 1=gentle, 2=forceful, 3=forced-consolidation
+
+    # Budget warnings — fire once at each threshold
+    _warned_75: bool = False
+    _warned_90: bool = False
 
     # Navigate to starting URL if provided — fail fast if unreachable
     if sample.url:
@@ -238,6 +261,50 @@ async def run(
         if vision_text:
             log.debug(f"Step {step} vision | {vision_text[:300]}")
 
+        # ---- 2b. BUDGET WARNINGS (one-time injections) ----
+        budget_ratio = step / effective_max if effective_max > 0 else 0
+        if budget_ratio >= 0.75 and not _warned_75:
+            _warned_75 = True
+            remaining_steps = effective_max - step
+            history.append({
+                "step": step,
+                "action": "system_notice",
+                "result": (
+                    f"BUDGET WARNING: You have used {step}/{effective_max} steps ({int(budget_ratio*100)}%). "
+                    f"{remaining_steps} steps remaining. Start consolidating results — "
+                    f"call save_progress with collected data, then finalize with done."
+                ),
+            })
+            log.info(f"Step {step} | Budget 75% warning injected")
+        if budget_ratio >= 0.90 and not _warned_90:
+            _warned_90 = True
+            remaining_steps = effective_max - step
+            history.append({
+                "step": step,
+                "action": "system_notice",
+                "result": (
+                    f"URGENT: {remaining_steps} steps left. Save any unsaved data NOW with save_progress, "
+                    f"then call done immediately with your best available results. "
+                    f"Partial results are far more valuable than exhausting all steps."
+                ),
+            })
+            log.info(f"Step {step} | Budget 90% warning injected")
+
+        # ---- 2c. LAST-STEP TOOL RESTRICTION ----
+        step_tools = tools
+        if step >= effective_max:
+            step_tools = _get_terminal_tools()
+            history.append({
+                "step": step,
+                "action": "system_notice",
+                "result": (
+                    "FINAL STEP. Your ONLY available actions are done and fail. "
+                    "Call done with all collected data, or fail with a precise reason. "
+                    "No other action is available."
+                ),
+            })
+            log.info(f"Step {step} | Final step — tools restricted to done/fail")
+
         # ---- 3. DECIDE (LLM call with prompt caching + retry) ----
         LLM_MAX_RETRIES = 3
         response = None
@@ -252,7 +319,7 @@ async def run(
                         "cache_control": {"type": "ephemeral"},
                     }],
                     messages=messages,
-                    tools=tools,
+                    tools=step_tools,
                     tool_choice={"type": "any"},
                 )
                 break
@@ -262,7 +329,47 @@ async def run(
                 if retryable and attempt < LLM_MAX_RETRIES:
                     await asyncio.sleep(2 ** attempt)
                 else:
-                    log.error(f"Step {step} | LLM failed after {LLM_MAX_RETRIES} retries: {str(e)[:200]}")
+                    # Try fallback model if configured and error is retryable
+                    if config.ENABLE_FALLBACK_LLM and retryable:
+                        log.info(f"Step {step} | Trying fallback LLM: {config.FALLBACK_LLM_MODEL}")
+                        try:
+                            response = await client.messages.create(
+                                model=config.FALLBACK_LLM_MODEL,
+                                max_tokens=1024,
+                                system=[{
+                                    "type": "text",
+                                    "text": task_spec.system_prompt,
+                                    "cache_control": {"type": "ephemeral"},
+                                }],
+                                messages=messages,
+                                tools=step_tools,
+                                tool_choice={"type": "any"},
+                            )
+                            log.info(f"Step {step} | Fallback LLM succeeded")
+                            break
+                        except Exception as fallback_err:
+                            log.error(f"Step {step} | Fallback LLM also failed: {str(fallback_err)[:150]}")
+
+                    log.error(f"Step {step} | LLM failed after all retries: {str(e)[:200]}")
+
+                    # Attempt final consolidation before giving up
+                    if config.FINALIZE_ON_FAILURE and accumulated:
+                        log.info("Attempting final consolidation after LLM failure...")
+                        final_result = await _attempt_final_consolidation(
+                            client, task_spec, accumulated, progress_notes, progress, page_state,
+                            prefer_fallback=True,
+                        )
+                        if final_result:
+                            output_mgr.write_checkpoint(
+                                step, final_result, progress_notes, max_steps=effective_max, status="partial_success"
+                            )
+                            output_mgr.write_result(
+                                status="partial_success", extracted=final_result,
+                                errors=["LLM error — finalized via consolidation"],
+                                notes=progress_notes, steps=step,
+                            )
+                            return
+
                     output_mgr.log_step(StepRecord(
                         step=step, action="llm_error", result=str(e)[:200], url=page.url,
                     ))
@@ -323,6 +430,15 @@ async def run(
             if block.type == "text" and block.text:
                 thinking = block.text[:300]
                 break
+
+        # Extract structured reflection fields (truncate to prevent token bloat)
+        evaluation = (action.evaluation_previous_step or "")[:160]
+        mem_update = (action.memory_update or "")[:160]
+        next_goal = (action.next_goal or "")[:160]
+        if evaluation or mem_update or next_goal:
+            log.debug(
+                f"Step {step} reflection | eval={evaluation[:80]} | mem={mem_update[:80]} | goal={next_goal[:80]}"
+            )
 
         # ---- 4. ACT (with per-step timeout to prevent hung workers) ----
         ACTION_TIMEOUT = 60  # seconds — generous ceiling for any single browser action
@@ -410,23 +526,31 @@ async def run(
             result_desc = f"new_data={data_changed} | {note} | keys={list(partial.keys())}"
             log.info(f"Step {step} | save_progress #{items_collected} | {result_desc}")
 
-            # Log save_progress into action_log.json (same path as all other actions)
             output_mgr.log_step(StepRecord(
                 step=step,
                 thinking=thinking,
                 action="save_progress",
-                params=action.model_dump(exclude_none=True, exclude={"action"}),
+                params=action.model_dump(exclude_none=True, exclude={
+                    "action", "evaluation_previous_step", "memory_update", "next_goal",
+                }),
                 result=result_desc,
                 url=page.url,
+                evaluation=evaluation,
+                memory_update=mem_update,
+                next_goal=next_goal,
             ))
 
-            # Record in history so it's visible to summaries and learned patterns
-            history.append({
+            sp_entry: dict = {
                 "step": step,
                 "action": "save_progress",
                 "params": {"note": note, "keys": list(partial.keys())},
                 "result": result_desc,
-            })
+            }
+            if mem_update:
+                sp_entry["memory"] = mem_update
+            if next_goal:
+                sp_entry["goal"] = next_goal
+            history.append(sp_entry)
             output_mgr.write_checkpoint(step, accumulated, progress_notes, max_steps=effective_max)
 
             # Follow-up system notice based on outcome
@@ -485,23 +609,34 @@ async def run(
         if step > 0 and step % CHECKPOINT_INTERVAL == 0:
             output_mgr.write_checkpoint(step, accumulated, progress_notes, max_steps=effective_max)
 
-        # Log the step
+        # Log the step (with reflection fields for audit trail)
         output_mgr.log_step(StepRecord(
             step=step,
             thinking=thinking,
             action=action.action,
-            params=action.model_dump(exclude_none=True, exclude={"action"}),
+            params=action.model_dump(exclude_none=True, exclude={
+                "action", "evaluation_previous_step", "memory_update", "next_goal",
+            }),
             result=action_result.description if action_result.success else (action_result.error or ""),
             url=page.url,
+            evaluation=evaluation,
+            memory_update=mem_update,
+            next_goal=next_goal,
         ))
 
-        # Update history for next prompt
-        history.append({
+        # Update history for next prompt (include reflection for context continuity)
+        history_entry: dict = {
             "step": step,
             "action": action.action,
-            "params": {k: v for k, v in action.model_dump(exclude_none=True).items() if k != "action"},
+            "params": {k: v for k, v in action.model_dump(exclude_none=True).items()
+                       if k not in ("action", "evaluation_previous_step", "memory_update", "next_goal")},
             "result": action_result.description if action_result.success else action_result.error,
-        })
+        }
+        if mem_update:
+            history_entry["memory"] = mem_update
+        if next_goal:
+            history_entry["goal"] = next_goal
+        history.append(history_entry)
 
         # ---- 5. CHECK TERMINATION ----
         if action.action == "done":
@@ -629,26 +764,9 @@ async def run(
                     pass
             return
 
-        # ---- 6. LOOP & FAILURE TRACKING ----
+        # ---- 6. LOOP, STAGNATION & FAILURE TRACKING ----
         loop_key = (page.url, action.action)
         loop_counter[loop_key] = loop_counter.get(loop_key, 0) + 1
-
-        # Track consecutive same action type (catches screenshot/goto/scroll spam)
-        # Excludes type/click — consecutive type calls are normal when filling forms
-        SPAM_ACTIONS = {"screenshot", "goto", "extract", "scroll"}
-        if len(history) >= 3:
-            last_3_actions = [h.get("action") for h in history[-3:]]
-            if (len(set(last_3_actions)) == 1
-                    and last_3_actions[0] in SPAM_ACTIONS):
-                history.append({
-                    "step": step,
-                    "action": "system_notice",
-                    "result": (
-                        f"You have called '{last_3_actions[0]}' 3 times consecutively. "
-                        f"STOP repeating this action. You already have the page data in the "
-                        f"page state text above. Extract the fields and call done now."
-                    ),
-                })
 
         if action_result.success:
             consecutive_failures = 0
@@ -662,32 +780,71 @@ async def run(
             effective_max = task_spec.max_steps + pagination_bonus
             log.info(f"Step {step} | Pagination detected → +3 bonus steps (effective_max={effective_max})")
 
-        # ---- WATCHDOG: detect stalls and force intervention ----
-        # Only reset when genuinely new data arrived (not duplicate save_progress)
+        # ---- WATCHDOG + STAGNATION: unified escalating detection ----
         if (action.action == "save_progress" and data_changed) \
                 or (action.action == "extract" and action_result.success):
             last_data_step = step
 
-        steps_since_data = step - last_data_step
-        if steps_since_data >= WATCHDOG_STALL_LIMIT and step < effective_max:
-            log.warning(f"Step {step} | Watchdog: {steps_since_data} steps without new data")
-            if accumulated:
-                output_mgr.write_checkpoint(
-                    step, accumulated, progress_notes, max_steps=effective_max, status="watchdog_stall"
-                )
-            history.append({
-                "step": step,
-                "action": "system_notice",
-                "result": (
-                    f"WARNING: You have not produced new data in {steps_since_data} steps. "
-                    f"You have {effective_max - step} steps left. Either extract/save_progress with data, "
-                    f"or call done with what you have, or call fail if the task cannot be completed."
-                ),
-            })
-            last_data_step = step  # reset to avoid spamming
+        # Page signature = hash of (normalized URL + first 2K of DOM text)
+        page_sig = hashlib.md5(f"{page.url}|{page_state[:2000]}".encode()).hexdigest()
+        if page_sig == _last_page_sig and step - last_data_step > 1:
+            _stagnation_count += 1
+        else:
+            _stagnation_count = 0
+            _stagnation_level = 0
+        _last_page_sig = page_sig
 
-    # Exhausted max_steps without done/fail
+        steps_since_data = step - last_data_step
+        recovery_notice = _build_recovery_notice(
+            step=step,
+            effective_max=effective_max,
+            steps_since_data=steps_since_data,
+            stagnation_count=_stagnation_count,
+            stagnation_level=_stagnation_level,
+            consecutive_failures=consecutive_failures,
+            loop_counter=loop_counter,
+            current_url=page.url,
+            has_accumulated=bool(accumulated),
+        )
+        if recovery_notice:
+            level, message = recovery_notice
+            _stagnation_level = max(_stagnation_level, level)
+            log.warning(f"Step {step} | Recovery L{level}: {message[:120]}")
+            if level >= 2 and accumulated:
+                output_mgr.write_checkpoint(
+                    step, accumulated, progress_notes, max_steps=effective_max, status="stagnation"
+                )
+            history.append({"step": step, "action": "system_notice", "result": message})
+            if level >= 1:
+                last_data_step = step  # reset to avoid consecutive escalation spam
+
+    # Exhausted max_steps without done/fail — attempt final consolidation
     log.warning(f"Exhausted {effective_max} steps (base={task_spec.max_steps}, pagination_bonus={pagination_bonus})")
+
+    if config.FINALIZE_ON_FAILURE and accumulated:
+        log.info("Attempting final consolidation call...")
+        final_result = await _attempt_final_consolidation(
+            client, task_spec, accumulated, progress_notes, progress, page_state,
+        )
+        if final_result:
+            output_mgr.write_checkpoint(
+                step, final_result, progress_notes, max_steps=effective_max, status="partial_success"
+            )
+            output_mgr.write_result(
+                status="partial_success",
+                extracted=final_result,
+                errors=[f"Exhausted {effective_max} steps — finalized via consolidation"],
+                notes=progress_notes,
+                steps=step,
+            )
+            if sample.url:
+                try:
+                    memory.learn_failures(sample.url, progress, "partial_success",
+                                          reason="Exhausted steps, finalized")
+                except Exception:
+                    pass
+            return
+
     output_mgr.write_checkpoint(
         step, accumulated or {}, progress_notes, max_steps=effective_max, status="max_steps_exceeded"
     )
@@ -843,6 +1000,133 @@ def _is_pagination_click(selector: str, result_desc: str) -> bool:
     """Detect if a click was a pagination action (next page, load more, etc.)."""
     combined = f"{selector} {result_desc}".lower()
     return any(kw in combined for kw in PAGINATION_KEYWORDS)
+
+
+def _build_recovery_notice(
+    step: int,
+    effective_max: int,
+    steps_since_data: int,
+    stagnation_count: int,
+    stagnation_level: int,
+    consecutive_failures: int,
+    loop_counter: dict,
+    current_url: str,
+    has_accumulated: bool,
+) -> tuple[int, str] | None:
+    """Unified escalating recovery system.
+
+    Returns (escalation_level, message) or None.
+    Level 1: gentle nudge — suggest alternatives
+    Level 2: forceful demand — insist on strategy change
+    Level 3: forced consolidation — must call done/fail next
+    """
+    remaining = effective_max - step
+
+    # Level 3: forced consolidation after severe stagnation or near budget end
+    if stagnation_count >= 8 and stagnation_level < 3:
+        return 3, (
+            f"CRITICAL: You have been stuck on the same page for {stagnation_count} steps "
+            f"with no new data. You MUST call done with whatever data you have, "
+            f"or call fail with a reason. No more browsing."
+        )
+
+    # Level 2: forceful demand after moderate stagnation
+    if stagnation_count >= 5 and stagnation_level < 2:
+        return 2, (
+            f"WARNING: Same page state for {stagnation_count} steps, no new data in "
+            f"{steps_since_data} steps. CHANGE YOUR STRATEGY NOW. "
+            f"Options: navigate to a different page, try different selectors, "
+            f"or call done/save_progress with what you have. {remaining} steps left."
+        )
+
+    # Level 1: gentle nudge after early stagnation or watchdog trigger
+    if (stagnation_count >= 3 and stagnation_level < 1) or (
+        steps_since_data >= 5 and stagnation_level < 1
+    ):
+        return 1, (
+            f"You have not produced new data in {steps_since_data} steps. "
+            f"The page state appears unchanged. Try a different approach: "
+            f"navigate elsewhere, scroll to find new content, or extract data you can see. "
+            f"{remaining} steps remaining."
+        )
+
+    # Spam detection: 3 consecutive identical action types
+    SPAM_ACTIONS = {"screenshot", "goto", "extract", "scroll"}
+    if len(loop_counter) > 0:
+        for (url, act_name), count in loop_counter.items():
+            if count >= 4 and url == current_url and act_name in SPAM_ACTIONS:
+                return 1, (
+                    f"You have called '{act_name}' {count} times on this URL. "
+                    f"STOP repeating this action and try something different."
+                )
+
+    return None
+
+
+async def _attempt_final_consolidation(
+    client: AsyncAnthropic,
+    task_spec: TaskSpec,
+    accumulated: dict,
+    progress_notes: list[str],
+    progress: dict,
+    page_state: str,
+    prefer_fallback: bool = False,
+) -> dict | None:
+    """Make one last LLM call to produce best-effort structured output.
+
+    Triggered when:
+    - max_steps exhausted with accumulated data
+    - circuit breaker with accumulated data
+    - stagnation level 3 with accumulated data
+
+    Gives the LLM the accumulated data and asks it to produce a final
+    done-quality extraction. Returns the extracted dict or None on failure.
+
+    When prefer_fallback=True (e.g. primary model just failed), or when
+    ENABLE_FALLBACK_LLM is set, tries the fallback model first.
+    """
+    acc_text = json.dumps(accumulated, indent=2, default=str)[:4000]
+    notes_text = "\n".join(progress_notes[-5:]) if progress_notes else "No notes."
+    schema_text = json.dumps(task_spec.output_schema, indent=2) if task_spec.output_schema else "{}"
+
+    prompt = (
+        f"You are finalizing a browser evidence collection task that ran out of steps.\n\n"
+        f"## Task goal\n{task_spec.goal}\n\n"
+        f"## Output schema\n{schema_text}\n\n"
+        f"## Data collected so far\n```json\n{acc_text}\n```\n\n"
+        f"## Progress notes\n{notes_text}\n\n"
+        f"## Current page\n{page_state[:1000]}\n\n"
+        f"Produce the BEST POSSIBLE structured output matching the output schema "
+        f"using the data collected so far. Return ONLY a valid JSON object. "
+        f"Include all fields from the schema, using collected data where available "
+        f"and null for fields that could not be collected."
+    )
+
+    # Model selection: prefer fallback when primary just failed or when configured
+    models_to_try = []
+    if prefer_fallback and config.ENABLE_FALLBACK_LLM:
+        models_to_try = [config.FALLBACK_LLM_MODEL, config.LLM_MODEL]
+    elif config.ENABLE_FALLBACK_LLM:
+        models_to_try = [config.LLM_MODEL, config.FALLBACK_LLM_MODEL]
+    else:
+        models_to_try = [config.LLM_MODEL]
+
+    for model in models_to_try:
+        try:
+            response = await client.messages.create(
+                model=model,
+                max_tokens=2048,
+                messages=[{"role": "user", "content": prompt}],
+            )
+            text = response.content[0].text.strip()
+            json_match = re.search(r"\{[\s\S]*\}", text)
+            if json_match:
+                result = json.loads(json_match.group())
+                _deep_merge(result, accumulated)
+                return result
+        except Exception:
+            continue
+    return None
 
 
 INFRA_ERROR_PATTERNS = [
@@ -1110,22 +1394,19 @@ def _build_messages(
         if progress_lines:
             parts.append(f"\n## Run state\n" + "\n".join(progress_lines))
 
-    # Action history (last 5 steps — recent context)
+    # Action history (budget-fitted, with reflection context)
     if history:
-        history_text = "\n".join(
-            f"Step {h['step']}: {h['action']} → {h.get('result', '')[:100]}"
-            for h in history
-        )
-        parts.append(f"\n## Action history ({len(history)} items, budget-fitted)\n{history_text}")
-
-    # Loop detection nudge
-    for (url, act_name), count in loop_counter.items():
-        if count >= 3 and url == snap.url:
-            parts.append(
-                f"\n[NOTICE] You have repeated '{act_name}' on this URL {count} times "
-                f"without progress. Try a different approach or call fail()."
-            )
-            break
+        history_lines = []
+        show_reflection = config.REFLECTION_MODE == "full"
+        for h in history:
+            line = f"Step {h['step']}: {h['action']} → {h.get('result', '')[:100]}"
+            if show_reflection:
+                if h.get("memory"):
+                    line += f" [mem: {h['memory'][:60]}]"
+                if h.get("goal"):
+                    line += f" [goal: {h['goal'][:60]}]"
+            history_lines.append(line)
+        parts.append(f"\n## Action history ({len(history)} items, budget-fitted)\n" + "\n".join(history_lines))
 
     # Consecutive failure recovery
     if consecutive_failures >= 3:
@@ -1173,6 +1454,14 @@ def _build_messages(
             f"{json.dumps(task_spec.judgment_output_schema)}"
         )
 
-    parts.append("\nTake the single best next action.")
+    if config.REFLECTION_MODE == "full":
+        parts.append(
+            "\nTake the single best next action. "
+            "Include evaluation_previous_step (did last action work?), "
+            "memory_update (key fact to carry forward), and "
+            "next_goal (what you intend to accomplish). Keep each to one sentence."
+        )
+    else:
+        parts.append("\nTake the single best next action.")
 
     return [{"role": "user", "content": "\n".join(parts)}]

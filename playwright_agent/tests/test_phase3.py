@@ -250,6 +250,151 @@ def test_output_manager_tracks_artifacts_for_validation():
         assert "checks" in labels
 
 
+# ---- structured reflection ----
+
+def test_reflection_fields_accepted_in_agent_action():
+    """AgentAction should accept optional reflection fields without error."""
+    action = AgentAction(
+        action="click", selector="3",
+        evaluation_previous_step="Previous goto succeeded, landed on profile page.",
+        memory_update="Profile page has contributions tab at index 5.",
+        next_goal="Click contributions tab to find commit history.",
+    )
+    assert action.evaluation_previous_step is not None
+    assert action.memory_update is not None
+    assert action.next_goal is not None
+    assert action.selector == "3"
+
+
+def test_reflection_fields_optional():
+    """Reflection fields should default to None when not provided."""
+    action = AgentAction(action="goto", url="https://example.com")
+    assert action.evaluation_previous_step is None
+    assert action.memory_update is None
+    assert action.next_goal is None
+
+
+def test_reflection_in_tool_schema():
+    """Every tool schema should include reflection properties."""
+    tools = action_tool_schema()
+    reflection_keys = {"evaluation_previous_step", "memory_update", "next_goal"}
+    for tool in tools:
+        props = set(tool["input_schema"]["properties"].keys())
+        missing = reflection_keys - props
+        assert not missing, f"Tool '{tool['name']}' missing reflection props: {missing}"
+        # Reflection fields must NOT be in required
+        required = set(tool["input_schema"].get("required", []))
+        assert not (reflection_keys & required), (
+            f"Tool '{tool['name']}' has reflection fields in required: {reflection_keys & required}"
+        )
+
+
+def test_step_record_includes_reflection():
+    """StepRecord should store evaluation, memory_update, and next_goal."""
+    from models.actions import StepRecord
+    rec = StepRecord(
+        step=5, action="click", result="OK", url="https://example.com",
+        evaluation="Goto succeeded.",
+        memory_update="Login page has form at index 2.",
+        next_goal="Fill in credentials.",
+    )
+    assert rec.evaluation == "Goto succeeded."
+    assert rec.memory_update == "Login page has form at index 2."
+    assert rec.next_goal == "Fill in credentials."
+
+
+# ---- terminal tools restriction ----
+
+def test_terminal_tools_only_done_and_fail():
+    """Last-step restricted tools should only contain done and fail."""
+    from agent_loop import _get_terminal_tools
+    terminal = _get_terminal_tools()
+    names = {t["name"] for t in terminal}
+    assert names == {"done", "fail"}, f"Expected only done/fail, got: {names}"
+
+
+def test_terminal_tools_include_reflection():
+    """Even terminal tools should have reflection properties."""
+    from agent_loop import _get_terminal_tools
+    reflection_keys = {"evaluation_previous_step", "memory_update", "next_goal"}
+    for tool in _get_terminal_tools():
+        props = set(tool["input_schema"]["properties"].keys())
+        assert reflection_keys.issubset(props), f"Terminal tool '{tool['name']}' missing reflection"
+
+
+# ---- escalating recovery ----
+
+def test_recovery_level_1_gentle():
+    """5+ steps without data should trigger level 1 nudge."""
+    from agent_loop import _build_recovery_notice
+    result = _build_recovery_notice(
+        step=10, effective_max=30, steps_since_data=5,
+        stagnation_count=3, stagnation_level=0,
+        consecutive_failures=0, loop_counter={},
+        current_url="https://example.com", has_accumulated=False,
+    )
+    assert result is not None
+    level, msg = result
+    assert level == 1
+
+
+def test_recovery_level_2_forceful():
+    """5+ stagnation with level<2 should trigger level 2."""
+    from agent_loop import _build_recovery_notice
+    result = _build_recovery_notice(
+        step=15, effective_max=30, steps_since_data=8,
+        stagnation_count=5, stagnation_level=1,
+        consecutive_failures=0, loop_counter={},
+        current_url="https://example.com", has_accumulated=True,
+    )
+    assert result is not None
+    level, msg = result
+    assert level == 2
+    assert "CHANGE YOUR STRATEGY" in msg
+
+
+def test_recovery_level_3_forced():
+    """8+ stagnation should trigger level 3 forced consolidation."""
+    from agent_loop import _build_recovery_notice
+    result = _build_recovery_notice(
+        step=20, effective_max=30, steps_since_data=12,
+        stagnation_count=8, stagnation_level=2,
+        consecutive_failures=0, loop_counter={},
+        current_url="https://example.com", has_accumulated=True,
+    )
+    assert result is not None
+    level, msg = result
+    assert level == 3
+    assert "CRITICAL" in msg
+
+
+def test_recovery_none_when_healthy():
+    """No recovery notice when everything is progressing normally."""
+    from agent_loop import _build_recovery_notice
+    result = _build_recovery_notice(
+        step=5, effective_max=30, steps_since_data=1,
+        stagnation_count=0, stagnation_level=0,
+        consecutive_failures=0, loop_counter={},
+        current_url="https://example.com", has_accumulated=False,
+    )
+    assert result is None
+
+
+# ---- config flags ----
+
+def test_config_has_new_feature_flags():
+    """Config should expose the new agent behavior flags."""
+    import config
+    assert hasattr(config, "REFLECTION_MODE")
+    assert config.REFLECTION_MODE in ("full", "light")
+    assert hasattr(config, "FINALIZE_ON_FAILURE")
+    assert isinstance(config.FINALIZE_ON_FAILURE, bool)
+    assert hasattr(config, "ENABLE_FALLBACK_LLM")
+    assert isinstance(config.ENABLE_FALLBACK_LLM, bool)
+    assert hasattr(config, "FALLBACK_LLM_MODEL")
+    assert isinstance(config.FALLBACK_LLM_MODEL, str)
+
+
 # ---- runner ----
 
 if __name__ == "__main__":

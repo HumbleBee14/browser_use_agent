@@ -45,3 +45,9 @@ MEMORY_DIR: Path = Path(__file__).parent / "memory"
 
 # --- Memory ---
 MAX_PATTERNS_PER_DOMAIN: int = 5
+
+# --- Agent behavior ---
+REFLECTION_MODE: str = os.getenv("REFLECTION_MODE", "full")  # "full" or "light"
+FINALIZE_ON_FAILURE: bool = os.getenv("FINALIZE_ON_FAILURE", "true").lower() == "true"
+ENABLE_FALLBACK_LLM: bool = os.getenv("ENABLE_FALLBACK_LLM", "false").lower() == "true"
+FALLBACK_LLM_MODEL: str = os.getenv("FALLBACK_LLM_MODEL", "claude-haiku-4-5")
