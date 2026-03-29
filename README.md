@@ -23,7 +23,7 @@ evidence/run_20260327_140000/
     └── checkpoint.json      (live progress tracking)
 ```
 
-It works on **any website** — GitHub, LinkedIn, Jira, Workday, Hacker News, internal tools — without writing a single line of site-specific code. All site knowledge lives in a JSON task spec.
+It works across a **broad class of accessible DOM-first websites** — GitHub, LinkedIn, Jira, Workday, Hacker News, internal tools — without writing site-specific Python code. All site knowledge lives in a JSON task spec.
 
 ---
 
@@ -31,12 +31,12 @@ It works on **any website** — GitHub, LinkedIn, Jira, Workday, Hacker News, in
 
 | Capability | Description |
 |-----------|-------------|
-| **Natural language input** | `--prompt "Go to X and extract Y"` — Claude converts to structured task spec |
+| **Natural language input** | `--prompt "Go to X and extract Y"` — Claude converts to a task spec and decides whether discovery is needed |
 | **Parallel execution** | N concurrent browser contexts, each isolated with own cookies/session |
 | **Long-horizon tasks** | 30-50+ step multi-page workflows with incremental checkpointing |
 | **Evidence-grade output** | SHA-256 hashed screenshots, structured JSON, full action audit trail |
 | **Self-correction** | 3-level escalating recovery, stagnation detection, loop/spam prevention |
-| **Long-term memory** | Learns navigation patterns from past runs, remembers failures to avoid |
+| **Run-scoped memory** | Learns navigation patterns within a run, remembers failures, and resumes cleanly without cross-run leakage |
 | **Dynamic history** | Budget-fitted context window (5-25 items), importance-scored, not fixed-size |
 | **Vision fallback** | When DOM can't see it (SVG icons, canvas), Claude Vision reads the screenshot |
 | **Crash recovery** | Checkpoint every 5 steps + on every save. Restart picks up where it stopped |
@@ -76,7 +76,7 @@ User Input (prompt or CSV)
 │  10 typed actions (click, type, extract…) │
 │  Structured reflection per step           │
 │  Escalating recovery on stagnation        │
-│  Long-term memory from past runs          │
+│  Run-scoped memory within the current run │
 └───────────────────────────────────────────┘
          │
          ▼
@@ -246,16 +246,16 @@ Most browser agents break after 10 steps. This one is built for extended multi-p
 
 ## Memory System
 
-The agent learns across runs.
+The agent learns **within a run**.
 
 | Type | File | Learned from | Purpose |
 |------|------|-------------|---------|
-| **Procedural patterns** | `memory/patterns.json` | Successful runs | Navigation tips, efficient action sequences |
-| **Episodic warnings** | `memory/failures.json` | Failed/partial runs | Dead URLs, broken selectors, failure reasons |
+| **Procedural patterns** | `evidence/run_XXXX/memory/patterns.json` | Successful samples in this run | Navigation tips, efficient action sequences |
+| **Episodic warnings** | `evidence/run_XXXX/memory/failures.json` | Failed/partial samples in this run | Dead URLs, broken selectors, failure reasons |
 
-After a successful run, Claude Haiku distills the action log into abstract navigation patterns. These are domain-keyed and task-aware — `get_hints()` ranks patterns by keyword overlap with the current goal.
+After a successful sample, Claude Haiku distills the action log into abstract navigation patterns. These are domain-keyed and task-aware within the current run — `get_hints()` ranks patterns by keyword overlap with the current goal.
 
-Failure signals (dead URLs, broken selectors, dead-end actions) are stored and injected into future prompts so the agent doesn't repeat the same mistakes.
+Failure signals (dead URLs, broken selectors, dead-end actions) are stored and injected into later samples in the same run so the agent doesn't repeat the same mistakes.
 
 ---
 
@@ -353,7 +353,7 @@ evidence/run_20260327_140000/
 cd playwright_agent
 python -m pytest tests/ -v
 
-# 104 tests covering:
+# 114 tests covering:
 # - Tools + models (test_phase1.py)
 # - DOM extractor + vision (test_phase2.py)
 # - Agent loop + reflection + recovery + batching (test_phase3.py)

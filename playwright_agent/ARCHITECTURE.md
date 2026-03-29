@@ -43,7 +43,7 @@ The core design target is now:
 
 ### Requirements
 
-- **System-agnostic** — works on any website via browser UI, no site-specific code
+- **System-agnostic within scope** — works across a broad class of accessible DOM-first websites via browser UI, no site-specific Python code
 - **Two modes** — Manual UI (default): navigate, extract, screenshot, download. Integration-assisted (optional): use exports/APIs if available
 - **Evidence-grade outputs** — screenshots, CSVs, judgments, per-sample folders
 - **Scalable** — 50 to 1,000+ samples per batch
@@ -175,7 +175,7 @@ playwright_agent/
 └── requirements.txt
 ```
 
-**10 Python files. That's the entire agent.** Everything site-specific lives in `tasks/*.json`.
+**A small set of focused Python modules.** Everything site-specific lives in `tasks/*.json`.
 
 ---
 

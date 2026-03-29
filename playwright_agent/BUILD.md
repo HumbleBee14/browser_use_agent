@@ -82,7 +82,7 @@ playwright_agent/
 │   ├── run_YYYY-MM-DD_HHMMSS.log
 │   └── run_YYYY-MM-DD_HHMMSS.jsonl
 │
-├── tests/               # Regression tests (108+ tests)
+├── tests/               # Regression tests (114+ tests)
 │   ├── test_phase1.py   # Tools + models
 │   ├── test_phase2.py   # DOM extractor + vision
 │   ├── test_phase3.py   # Agent loop + reflection + recovery + batching

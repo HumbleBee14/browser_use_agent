@@ -278,9 +278,15 @@ async def run(args: argparse.Namespace) -> None:
 
         # If planner flagged discovery needed, run it to collect URLs
         if discovery_spec:
+            discovery_url = getattr(task_spec, "_discovery_url", "")
+            if not discovery_url:
+                console.print("[red]Error: Planner flagged discovery but no discovery URL was generated.[/red]")
+                console.print("[dim]The planner could not determine a listing page URL from your prompt.[/dim]")
+                console.print("[dim]Try being more specific, e.g., 'Go to github.com/orgs/microsoft/people'[/dim]")
+                return
+
             console.print("[dim]Planner decision:[/dim] discovery required before execution")
             console.print(f"\n[yellow]Large-scale task detected — running discovery first...[/yellow]")
-            discovery_url = getattr(task_spec, "_discovery_url", "")
             console.print(f"  Discovery URL: {discovery_url}")
             samples_csv = evidence_dir / "discovered_samples.csv"
             disc_samples = await discover(

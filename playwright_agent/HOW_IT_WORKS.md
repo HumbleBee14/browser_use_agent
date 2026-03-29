@@ -317,7 +317,7 @@ The agent always sees in its prompt:
 - **Structured run state** (failed URLs, blocked selectors, dead ends, exhausted pages)
 - **Step budget** ("Step 16 of 40 — 24 remaining")
 - **Budget warnings** at 75% and 90% thresholds
-- **Memory hints** from successful past runs on the same domain (first 3 steps only)
+- **Memory hints** from earlier successful samples in the same run (first 3 steps only)
 - **Reflection context** from recent actions (memory updates, goals)
 
 Uses the fast/cheap model so summary calls cost < $0.001 each.
