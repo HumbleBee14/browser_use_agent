@@ -351,10 +351,29 @@ async def run(
                 current_url = page.url[:80]
                 if current_url not in progress["exhausted_pages"]:
                     progress["exhausted_pages"].append(current_url)
-            log.info(f"Step {step} | save_progress #{items_collected} | new_data={data_changed} | {note} | keys={list(partial.keys())}")
+            result_desc = f"new_data={data_changed} | {note} | keys={list(partial.keys())}"
+            log.info(f"Step {step} | save_progress #{items_collected} | {result_desc}")
             output_mgr.write_checkpoint(step, accumulated, progress_notes)
 
-            # Check if we've collected the expected number of items
+            # Log save_progress into action_log.json (same path as all other actions)
+            output_mgr.log_step(StepRecord(
+                step=step,
+                thinking=thinking,
+                action="save_progress",
+                params=action.model_dump(exclude_none=True, exclude={"action"}),
+                result=result_desc,
+                url=page.url,
+            ))
+
+            # Record in history so it's visible to summaries and learned patterns
+            history.append({
+                "step": step,
+                "action": "save_progress",
+                "params": {"note": note, "keys": list(partial.keys())},
+                "result": result_desc,
+            })
+
+            # Follow-up system notice based on outcome
             if task_spec.expected_items > 0 and items_collected >= task_spec.expected_items:
                 log.info(f"Step {step} | Expected items reached ({items_collected}/{task_spec.expected_items})")
                 history.append({
