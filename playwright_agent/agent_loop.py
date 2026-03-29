@@ -104,6 +104,7 @@ async def run(
     accumulated: dict = {}           # merged data from save_progress calls
     progress_notes: list[str] = []   # human-readable notes from save_progress
     step_summaries: list[str] = []   # condensed summaries every SUMMARY_INTERVAL steps
+    last_summarized_idx = 0          # high-water mark: history items already summarized
     SUMMARY_INTERVAL = 10
     CHECKPOINT_INTERVAL = 5
     WATCHDOG_STALL_LIMIT = 5         # steps without new data → force intervention
@@ -397,10 +398,13 @@ async def run(
             })
 
         # ---- STEP SUMMARY: LLM-powered condensation every N steps ----
-        if step > 0 and step % SUMMARY_INTERVAL == 0 and len(history) > MIN_HISTORY_ITEMS:
-            summary = await _summarize_steps(client, history[:-MIN_HISTORY_ITEMS], task_spec.goal, log)
+        # Only summarize history items added since the last summary (non-overlapping)
+        unsummarized = history[last_summarized_idx:-MIN_HISTORY_ITEMS] if len(history) > MIN_HISTORY_ITEMS else []
+        if step > 0 and step % SUMMARY_INTERVAL == 0 and unsummarized:
+            summary = await _summarize_steps(client, unsummarized, task_spec.goal, log)
             step_summaries.append(summary)
-            log.info(f"Step {step} | LLM summary generated | {summary[:100]}")
+            last_summarized_idx = len(history) - MIN_HISTORY_ITEMS
+            log.info(f"Step {step} | LLM summary generated ({len(unsummarized)} new items) | {summary[:100]}")
 
         # ---- AUTO-CHECKPOINT: write checkpoint.json every N steps ----
         if step > 0 and step % CHECKPOINT_INTERVAL == 0:

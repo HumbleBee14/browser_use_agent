@@ -1,8 +1,14 @@
 # Evidence output (generated at runtime)
-# evidence/
-# samples.csv
-# combined.csv
-*.csv.lock
+evidence/
+!evidence/.gitkeep
+
+# Runtime memory (mutable, per-machine)
+memory/*.json
+!memory/.gitkeep
+
+# Logs (generated at runtime)
+logs/
+!logs/.gitkeep
 
 # Environment
 .env
@@ -14,9 +20,6 @@ __pycache__/
 *.pyo
 .venv/
 venv/
-# *.log
-# *.jsonl
-
 
 # Auth state (contains session cookies)
 *_auth.json

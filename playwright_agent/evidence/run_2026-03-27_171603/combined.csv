@@ -1,7 +1,0 @@
-sample_id,status,commit_sha,pr_number,pr_creator,approvers,merger,checks_passed,checks_failed,merged_with_failures,ci_failure_details,jira_url
-commit_001,failed,,,,,,,,,,
-commit_002,failed,,,,,,,,,,
-commit_003,failed,,,,,,,,,,
-commit_004,failed,,,,,,,,,,
-commit_005,failed,,,,,,,,,,
-commit_006,failed,,,,,,,,,,

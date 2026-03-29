@@ -1,3 +1,0 @@
-sample_id,status,commit_sha,pr_number,pr_creator,approvers,merger,checks_passed,checks_failed,merged_with_failures,ci_failure_details,jira_url
-commit_001,done,9986a4378e3332af88cb8c4496fbb6b7231fd189,305569,benibenj,"[""justschen""]",benibenj,18,0,False,,
-commit_002,done,9c09f68f1b367d1b11afcf473ee615cc465f0751,305156,isidorn,"[""dmitrivMS""]",isidorn,18,0,False,,

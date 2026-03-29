@@ -1,2 +1,0 @@
-sample_id,status,form_submitted,response_status,fields_filled
-form_001,done,True,200 OK,"[""custname"", ""custtel"", ""custemail"", ""delivery"", ""comments"", ""size"", ""topping""]"
