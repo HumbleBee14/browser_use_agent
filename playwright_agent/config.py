@@ -41,16 +41,14 @@ AUTH_STORAGE_STATE: str | None = os.getenv("AUTH_STORAGE_STATE", None)
 EVIDENCE_DIR: Path = Path(__file__).parent / "evidence"
 TASKS_DIR: Path = Path(__file__).parent / "tasks"
 LOGS_DIR: Path = Path(__file__).parent / "logs"
-MEMORY_DIR: Path = Path(__file__).parent / "memory"
-
-# --- Memory ---
+# Memory is run-scoped — stored in evidence/run_XXXX/memory/ (no global folder)
 MAX_PATTERNS_PER_DOMAIN: int = 5
 
 # --- Agent behavior ---
 # Default "light" saves tool-schema + prompt tokens; use "full" for long-horizon / hard tasks.
 REFLECTION_MODE: str = os.getenv("REFLECTION_MODE", "light")  # "full" or "light"
 FINALIZE_ON_FAILURE: bool = os.getenv("FINALIZE_ON_FAILURE", "true").lower() == "true"
-# After successful runs, optional Haiku distillation into memory/patterns.json (latency + tiny cost).
+# After successful runs, optional Haiku distillation into evidence/run_XXXX/memory/ (latency + tiny cost).
 ENABLE_MEMORY_DISTILLATION: bool = os.getenv("ENABLE_MEMORY_DISTILLATION", "true").lower() == "true"
 ENABLE_FALLBACK_LLM: bool = os.getenv("ENABLE_FALLBACK_LLM", "false").lower() == "true"
 FALLBACK_LLM_MODEL: str = os.getenv("FALLBACK_LLM_MODEL", "claude-haiku-4-5")

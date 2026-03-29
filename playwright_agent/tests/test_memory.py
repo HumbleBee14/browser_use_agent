@@ -93,6 +93,26 @@ def test_record_usage_increments():
         assert fresh["example.com"][0]["uses"] == 2
 
 
+def test_run_scoped_memory_cache_isolated_and_resettable():
+    """Each run dir gets its own MemoryStore; cache resets cleanly per run."""
+    from agent_loop import _get_memory, clear_memory_cache
+
+    with tempfile.TemporaryDirectory() as tmp1, tempfile.TemporaryDirectory() as tmp2:
+        run1 = Path(tmp1)
+        run2 = Path(tmp2)
+
+        m1a = _get_memory(run1)
+        m1b = _get_memory(run1)
+        m2 = _get_memory(run2)
+
+        assert m1a is m1b
+        assert m1a is not m2
+
+        clear_memory_cache(run1)
+        m1c = _get_memory(run1)
+        assert m1c is not m1a
+
+
 # ---------------------------------------------------------------------------
 # Task-aware retrieval: patterns ranked by goal relevance
 # ---------------------------------------------------------------------------

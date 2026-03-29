@@ -1,10 +1,6 @@
-# Evidence output (generated at runtime)
+# Evidence output + run-scoped memory (generated at runtime)
 evidence/
 !evidence/.gitkeep
-
-# Runtime memory (mutable, per-machine)
-memory/*.json
-!memory/.gitkeep
 
 # Logs (generated at runtime)
 logs/

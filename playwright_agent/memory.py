@@ -5,7 +5,7 @@ compact reusable pattern keyed by domain. On future runs against the same
 domain, these patterns are injected into the prompt so the agent can skip
 the discovery phase and execute efficiently.
 
-Storage: JSON file at memory/patterns.json (no external dependencies).
+Storage: JSON files in evidence/run_XXXX/memory/ (run-scoped, no cross-run leakage).
 """
 
 from __future__ import annotations
@@ -47,8 +47,8 @@ class MemoryStore:
     - Episodic warnings (from failures): dead ends, broken selectors, traps
     """
 
-    def __init__(self, memory_dir: Path | None = None):
-        self.memory_dir = memory_dir or config.MEMORY_DIR
+    def __init__(self, memory_dir: Path):
+        self.memory_dir = memory_dir
         self.patterns_file = self.memory_dir / "patterns.json"
         self.failures_file = self.memory_dir / "failures.json"
         self._patterns: dict = self._load(self.patterns_file)

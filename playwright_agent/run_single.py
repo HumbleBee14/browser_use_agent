@@ -11,6 +11,7 @@ import argparse
 import asyncio
 import json
 import sys
+from datetime import datetime
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
@@ -32,8 +33,9 @@ async def run(args):
     sample_id = args.id or "sample_001"
     sample = SampleInput(sample_id=sample_id, url=args.url)
 
-    evidence_dir = config.EVIDENCE_DIR
+    evidence_dir = config.EVIDENCE_DIR / f"single_{datetime.now().strftime('%Y-%m-%d_%H%M%S')}"
     evidence_dir.mkdir(parents=True, exist_ok=True)
+    agent_loop.clear_memory_cache(evidence_dir)
     init_logging(evidence_dir)
 
     output_mgr = OutputManager(evidence_dir, sample_id)

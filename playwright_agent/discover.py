@@ -39,6 +39,7 @@ async def discover(
     start_url: str,
     output_csv: Path,
     headless: bool = False,
+    evidence_dir: Path | None = None,
 ) -> list[SampleInput]:
     """Run discovery: navigate start URL, paginate, collect samples.
 
@@ -62,11 +63,13 @@ async def discover(
     )
     page = await ctx.new_page()
 
-    # Use a unique discovery dir — clear any stale results first
-    discovery_dir = config.EVIDENCE_DIR / "_discovery"
+    # Discovery artifacts belong to the current run when available.
+    discovery_root = evidence_dir if evidence_dir is not None else output_csv.parent
+    discovery_dir = discovery_root / "_discovery"
     if discovery_dir.exists():
         shutil.rmtree(discovery_dir)
     discovery_dir.mkdir(parents=True, exist_ok=True)
+    agent_loop.clear_memory_cache(discovery_dir)
 
     output_mgr = OutputManager(discovery_dir, "discovery")
     sample = SampleInput(sample_id="discovery", url=start_url)
@@ -173,6 +176,7 @@ async def run(args):
     samples = await discover(
         task_spec, args.start_url, output_csv,
         headless=config.HEADLESS,
+        evidence_dir=output_csv.parent,
     )
     console.print(f"\n  Total: {len(samples)} samples written to {output_csv}")
 

@@ -158,15 +158,16 @@ playwright_agent/
 │   ├── linear_tickets.json
 │   └── _template.json
 │
-├── evidence/                # output root — one folder per sample_id
-│   └── {sample_id}/
-│       ├── 01_{label}.png
-│       ├── result.json      # extracted fields + artifact manifest
-│       └── action_log.json  # every step: thinking, action, outcome
-│
-├── memory/                  # long-term memory (auto-generated)
-│   ├── patterns.json        # navigation patterns from successful runs
-│   └── failures.json        # failure warnings
+├── evidence/                # output root — one folder per run
+│   └── run_YYYY-MM-DD_HHMMSS/
+│       ├── memory/
+│       │   ├── patterns.json      # learned only within this run
+│       │   └── failures.json      # failure warnings only within this run
+│       ├── combined.csv
+│       └── {sample_id}/
+│           ├── 01_{label}.png
+│           ├── result.json        # extracted fields + artifact manifest
+│           └── action_log.json    # every step: thinking, action, outcome
 │
 ├── samples.csv              # written by discover.py, consumed by main.py
 ├── combined.csv             # merged at end of run

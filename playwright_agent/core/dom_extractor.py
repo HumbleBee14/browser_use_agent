@@ -437,8 +437,8 @@ def _compute_confidence(metrics: PageMetrics) -> float:
     Weights:
     - canvas: heavy penalty (0.3) — canvas content is invisible to DOM
     - missing ARIA labels: medium penalty (0.2) — unlabeled buttons/links
-    - SVG: minimal penalty (0.02) — most SVGs are decorative (icons, arrows),
-      not data-carrying. Only truly matters when SVGs replace text status indicators.
+    - SVG: moderate penalty when SVGs dominate interactive structure — many SVG-heavy
+      apps use icon-only/status-only controls that are poorly represented in text DOM
     - few semantic nodes: heavy penalty (0.3) — page is mostly images/canvas
     """
     if metrics.total_nodes == 0:

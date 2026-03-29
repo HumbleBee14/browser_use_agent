@@ -1,1 +1,4 @@
 /browser_agent/.venv
+
+# Roopik IDE metadata
+.roopik/

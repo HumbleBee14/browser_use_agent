@@ -90,13 +90,19 @@ def test_compute_confidence_healthy():
 
 
 def test_compute_confidence_svg_heavy():
+    """SVG-heavy pages should score slightly lower than healthy but still above vision threshold.
+
+    SVGs are mostly decorative (icons, arrows) — they shouldn't tank confidence.
+    Only canvas and missing ARIA labels are strong signals of broken DOM.
+    """
     metrics = PageMetrics(
         total_nodes=50, semantic_nodes=30, interactive_nodes=10,
         canvas_count=0, svg_count=20, missing_aria_labels=5,
     )
     c = _compute_confidence(metrics)
-    assert c <= 0.7, f"Expected <= 0.7 for SVG-heavy, got {c}"
-    # Should be lower than a healthy page
+    # SVG-heavy should still be above vision threshold (0.6) — SVGs are decorative
+    assert c > 0.6, f"SVG-heavy should NOT trigger vision, got {c}"
+    # But should be lower than a healthy page (slight penalty)
     healthy = PageMetrics(total_nodes=50, semantic_nodes=30, interactive_nodes=15,
                           canvas_count=0, svg_count=2, missing_aria_labels=1)
     assert c < _compute_confidence(healthy), "SVG-heavy should score lower than healthy"

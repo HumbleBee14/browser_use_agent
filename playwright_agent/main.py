@@ -36,6 +36,7 @@ from rich.console import Console
 from rich.table import Table
 
 import config
+import agent_loop
 import worker
 from discover import discover
 from log_setup import init_logging, logger
@@ -43,6 +44,39 @@ from models.task import TaskSpec, SampleInput, load_task_spec
 from tools.output import merge_results_to_csv
 
 console = Console()
+
+
+def _warn_prompt_mode_overrides(args: argparse.Namespace) -> None:
+    """Prompt mode owns planning/discovery/sample generation.
+
+    If the user also passes manual input/discovery flags, make the precedence
+    explicit instead of silently mixing two control paths.
+    """
+    if not args.prompt:
+        return
+
+    ignored = []
+    if args.input:
+        ignored.append("--input")
+    if args.url:
+        ignored.append("--url")
+    if args.id:
+        ignored.append("--id")
+    if args.discover:
+        ignored.append("--discover")
+    if args.start_url:
+        ignored.append("--start-url")
+
+    if ignored:
+        console.print(
+            f"[yellow]Prompt mode active:[/yellow] planner will decide samples/discovery; "
+            f"ignoring manual flags: {', '.join(ignored)}"
+        )
+
+
+def _has_unresolved_placeholders(url: str) -> bool:
+    """True when a task-spec start_url still contains format placeholders."""
+    return "{" in url and "}" in url
 
 
 def load_samples(input_path: str, task_spec: TaskSpec | None = None) -> list[SampleInput]:
@@ -219,6 +253,7 @@ async def run(args: argparse.Namespace) -> None:
     """Main entry point."""
 
     planned_samples = None
+    _warn_prompt_mode_overrides(args)
 
     # Determine evidence directory
     if args.resume:
@@ -231,6 +266,9 @@ async def run(args: argparse.Namespace) -> None:
         evidence_dir = config.EVIDENCE_DIR / f"run_{datetime.now().strftime('%Y-%m-%d_%H%M%S')}"
         evidence_dir.mkdir(parents=True, exist_ok=True)
 
+    # Reuse of the same Python process should not leak run-local memory state.
+    agent_loop.clear_memory_cache(evidence_dir)
+
     # Load task spec from file OR generate from natural language prompt
     if args.prompt:
         from task_planner import plan_chunked
@@ -240,6 +278,7 @@ async def run(args: argparse.Namespace) -> None:
 
         # If planner flagged discovery needed, run it to collect URLs
         if discovery_spec:
+            console.print("[dim]Planner decision:[/dim] discovery required before execution")
             console.print(f"\n[yellow]Large-scale task detected — running discovery first...[/yellow]")
             discovery_url = getattr(task_spec, "_discovery_url", "")
             console.print(f"  Discovery URL: {discovery_url}")
@@ -247,6 +286,7 @@ async def run(args: argparse.Namespace) -> None:
             disc_samples = await discover(
                 discovery_spec, discovery_url, samples_csv,
                 headless=args.headless if args.headless is not None else config.HEADLESS,
+                evidence_dir=evidence_dir,
             )
             if disc_samples:
                 planned_samples = disc_samples
@@ -257,6 +297,8 @@ async def run(args: argparse.Namespace) -> None:
                 console.print("[dim]Try providing explicit URLs via --input CSV instead.[/dim]")
                 logger.error("Discovery returned 0 samples, aborting to prevent misleading single-page run")
                 return
+        else:
+            console.print("[dim]Planner decision:[/dim] direct execution; discovery not needed")
 
         # Log what the planner generated — visible in console + log file
         console.print(f"\n[green]Generated Task Spec:[/green]")
@@ -316,10 +358,11 @@ async def run(args: argparse.Namespace) -> None:
             console.print("[red]Error: --discover requires --start-url[/red]")
             return
 
-        samples_csv = evidence_dir.parent / "samples.csv"
+        samples_csv = evidence_dir / "samples.csv"
         samples = await discover(
             discovery_spec, start_url, samples_csv,
             headless=headless,
+            evidence_dir=evidence_dir,
         )
         if not samples:
             console.print("[red]Discovery found no samples. Exiting.[/red]")
@@ -355,8 +398,35 @@ async def run(args: argparse.Namespace) -> None:
         samples = [SampleInput(sample_id=sample_id, url=args.url)]
         console.print(f"  Sample:      {sample_id} ({args.url})")
     else:
-        console.print("[red]Error: Provide --input CSV, --url, or --discover + --start-url[/red]")
-        return
+        # Manual task mode fallback: infer the safest starting mode from the task spec.
+        if task_spec.phase == "discovery" and task_spec.start_url and not _has_unresolved_placeholders(task_spec.start_url):
+            console.print(
+                "[yellow]No input source provided.[/yellow] "
+                "Task spec is a discovery task with a concrete start_url, so running discovery automatically."
+            )
+            samples_csv = evidence_dir / "samples.csv"
+            samples = await discover(
+                task_spec, task_spec.start_url, samples_csv,
+                headless=headless,
+                evidence_dir=evidence_dir,
+            )
+            if not samples:
+                console.print("[red]Discovery found no samples. Exiting.[/red]")
+                return
+            console.print(f"  Samples:     {len(samples)} (auto-discovered from task spec)")
+        elif task_spec.phase == "execution" and task_spec.start_url and not _has_unresolved_placeholders(task_spec.start_url):
+            console.print(
+                "[yellow]No input source provided.[/yellow] "
+                "Task spec has a concrete start_url, so running it as a single sample."
+            )
+            samples = [SampleInput(sample_id=args.id or "sample_001", url=task_spec.start_url)]
+            console.print(f"  Sample:      {samples[0].sample_id} ({samples[0].url})")
+        else:
+            console.print(
+                "[red]Error:[/red] no input source was provided, and the task spec does not define a concrete "
+                "auto-runnable start_url. Provide --input CSV, --url, or --discover + --start-url."
+            )
+            return
 
     logger.info(
         f"Batch started | task={task_spec.task_id} | samples={len(samples)} | "
@@ -380,8 +450,8 @@ def main():
     parser.add_argument("--id", help="Sample ID for single URL mode")
 
     # Discovery mode
-    parser.add_argument("--discover", help="Path to discovery task spec JSON")
-    parser.add_argument("--start-url", help="URL to start discovery from (use with --discover)")
+    parser.add_argument("--discover", help="Path to discovery task spec JSON (manual task mode; prompt mode decides automatically)")
+    parser.add_argument("--start-url", help="URL to start discovery from (use with --discover in manual task mode)")
 
     # Resume
     parser.add_argument("--resume", help="Path to existing run directory to resume")

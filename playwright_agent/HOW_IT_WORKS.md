@@ -358,6 +358,17 @@ For tasks involving 10+ items with individual URLs (e.g., "extract all 200 org m
 
 This means a "200 org members" task becomes 200 parallel workers (bounded by concurrency limit), each doing a simple 3-5 step extraction — much faster and more reliable than one agent doing 500+ steps.
 
+Decision boundary:
+- **Prompt mode (`--prompt`)**: the planner decides whether discovery is needed
+- **Manual task mode (`--task`)**: discovery is explicit via `--discover --start-url`
+- **Workers never self-trigger discovery**: it runs once at the orchestrator layer, then execution workers process the discovered samples
+
+Manual-mode fallback:
+- if no `--input`, `--url`, or `--discover` is provided, the orchestrator will infer the safest path from the task spec
+- discovery task + concrete `start_url` → auto-run discovery
+- execution task + concrete `start_url` → auto-run one sample
+- placeholder URLs like `https://github.com/{username}` are **not** auto-runnable and still require input data
+
 ### 7. Smart Termination
 
 The agent doesn't just stop at `max_steps`. Multiple termination conditions are checked **before every step**:
@@ -402,20 +413,32 @@ If the agent hits any termination condition, accumulated data is **not lost**:
 - `result.json` includes accumulated data (with appropriate status)
 - `action_log.json` has the full step trace up to the termination point
 
-### 9. Long-Term Memory (`memory.py`)
+### 9. Run-Scoped Memory (`memory.py`)
 
-Cross-run learning. The agent remembers what worked and what failed on each domain.
+The agent learns within a run. Memory is stored inside each run's evidence folder — no cross-run leakage, no stale patterns from old tasks.
+
+```
+evidence/run_2026-03-29_030929/
+├── memory/
+│   ├── patterns.json    ← learned from successful samples in THIS run
+│   └── failures.json    ← failure patterns from THIS run
+├── combined.csv
+├── commit_001/
+└── commit_002/
+```
 
 | Type | File | Learned from | Contains |
 |------|------|-------------|----------|
-| Procedural patterns | `memory/patterns.json` | Successful `done` runs | Action sequences, navigation tips, things to avoid |
-| Episodic warnings | `memory/failures.json` | `failed` / `partial_success` runs | Dead URLs, broken selectors, failure reasons |
+| Procedural patterns | `evidence/run_XXXX/memory/patterns.json` | Successful `done` samples | Action sequences, navigation tips, things to avoid |
+| Episodic warnings | `evidence/run_XXXX/memory/failures.json` | `failed` / `partial_success` samples | Dead URLs, broken selectors, failure reasons |
 
 **How it works:**
-- After a successful run, Claude Haiku distills the full action log into abstract navigation patterns
+- Sample N finishes → Claude Haiku distills its action log into abstract navigation patterns
+- Pattern saved to `evidence/run_XXXX/memory/patterns.json`
+- Sample N+1 starts → loads memory → gets tips from earlier samples in this run
 - Patterns are domain-keyed and task-aware — `get_hints()` ranks by keyword overlap with the current goal
-- Failure warnings are stored from any non-`done` termination
-- Hints are injected into the prompt for the first 3 steps of future runs on the same domain
+- Each run starts fresh — no old patterns from different tasks can interfere
+- On `--resume`, the existing memory is loaded and updated (not recreated)
 
 ### 10. Multi-Action Batching (Experimental)
 
@@ -460,6 +483,6 @@ Zero site-specific code in any Python file. The agent reads the live DOM and rea
 
 - `tasks/*.json` — goal, keywords, output schema, system prompt
 - `.env` — credentials and agent behavior tuning (reflection mode, fallback LLM, multi-action batching)
-- `memory/` — learned navigation patterns (auto-generated, domain-keyed)
+- `evidence/run_XXXX/memory/` — run-local learned navigation patterns and failure warnings
 
 To add a new site: write one JSON file. No code changes.

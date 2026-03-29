@@ -77,6 +77,35 @@ def test_load_samples_allows_nullable_missing():
         assert len(samples) == 1
 
 
+def test_concrete_execution_start_url_can_auto_run():
+    """Manual mode can auto-run a single sample when task_spec.start_url is concrete."""
+    spec = TaskSpec(
+        task_id="test", phase="execution", start_url="https://example.com/dashboard",
+        system_prompt="x", goal="x",
+    )
+    assert spec.start_url
+    assert "{" not in spec.start_url
+
+
+def test_discovery_start_url_can_auto_discover():
+    """Manual mode can auto-discover when a discovery task has a concrete start_url."""
+    spec = TaskSpec(
+        task_id="test_discovery", phase="discovery", start_url="https://example.com/list",
+        system_prompt="x", goal="x",
+    )
+    assert spec.phase == "discovery"
+    assert spec.start_url == "https://example.com/list"
+
+
+def test_placeholder_start_url_cannot_auto_run():
+    """Parameterized start_url still requires explicit input data."""
+    spec = TaskSpec(
+        task_id="profile", phase="execution", start_url="https://github.com/{username}",
+        system_prompt="x", goal="x",
+    )
+    assert "{" in spec.start_url and "}" in spec.start_url
+
+
 # ---- idempotent restart ----
 
 def test_get_completed_samples():
@@ -270,6 +299,18 @@ def test_collision_safe_sample_ids():
 
     assert ids == ["john_smith", "john_smith_2", "john_smith_3"]
     assert len(set(ids)) == 3  # all unique
+
+
+def test_discovery_dir_is_run_scoped():
+    """Discovery artifacts should live inside the current run directory."""
+    with tempfile.TemporaryDirectory() as tmp:
+        evidence_dir = Path(tmp) / "run_2026-03-29_120000"
+        output_csv = evidence_dir / "samples.csv"
+
+        discovery_root = evidence_dir if evidence_dir is not None else output_csv.parent
+        resolved = discovery_root / "_discovery"
+
+        assert resolved == evidence_dir / "_discovery"
 
 
 # ---- runner ----

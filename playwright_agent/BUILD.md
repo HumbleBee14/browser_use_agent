@@ -59,7 +59,7 @@ playwright_agent/
 ├── agent_navigation.py  # Pagination + multi-action batch safety helpers
 ├── agent_dispatch.py    # Playwright execution for one AgentAction
 ├── config.py            # Environment config (all .env settings)
-├── memory.py            # Long-term memory: patterns + failures, LLM-distilled
+├── memory.py            # Run-scoped memory: patterns + failures, LLM-distilled
 ├── task_planner.py      # Natural language → structured task spec
 ├── log_setup.py         # Structured logging (loguru, dual human + JSONL)
 │
@@ -78,10 +78,6 @@ playwright_agent/
 ├── tasks/               # Task specs (JSON) — all site-specific config
 │   └── _template.json
 │
-├── memory/              # Long-term memory (auto-generated at runtime)
-│   ├── patterns.json    # Learned navigation patterns from successful runs
-│   └── failures.json    # Failure warnings from failed/partial runs
-│
 ├── logs/                # Structured logs — one pair per run
 │   ├── run_YYYY-MM-DD_HHMMSS.log
 │   └── run_YYYY-MM-DD_HHMMSS.jsonl
@@ -94,6 +90,9 @@ playwright_agent/
 │   └── test_memory.py   # Memory system
 │
 └── evidence/            # Output — generated at runtime
+    └── run_YYYY-MM-DD_HHMMSS/
+        ├── memory/      # Run-scoped patterns + failure warnings
+        └── ...
     └── run_YYYY-MM-DD_HHMMSS/
         └── {sample_id}/
             ├── 01_{label}.png

@@ -336,16 +336,16 @@ Page exhaustion: when `save_progress` successfully extracts new data from a page
 
 #### Upgrade 2: Episodic Failure Memory
 
-`MemoryStore` now stores two kinds of memories:
+`MemoryStore` is now **run-scoped** — stored inside `evidence/run_XXXX/memory/`. Each run builds its own memory from scratch. Samples within a run learn from each other, but different runs cannot interfere.
 
 | Type | File | Learned from | Contains |
 |---|---|---|---|
-| Procedural patterns | `memory/patterns.json` | `done` runs | action sequences, tips, things to avoid |
-| Episodic warnings | `memory/failures.json` | `failed` / `partial_success` runs | dead URLs, broken selectors, dead ends, failure reason |
+| Procedural patterns | `evidence/run_XXXX/memory/patterns.json` | `done` samples in this run | action sequences, tips, things to avoid |
+| Episodic warnings | `evidence/run_XXXX/memory/failures.json` | `failed` / `partial_success` samples in this run | dead URLs, broken selectors, dead ends, failure reason |
 
-**Before:** Only successful runs were remembered. Every new run on the same domain would hit the same dead ends again.
+**Why run-scoped?** A commit audit pattern ("click PR link") would be harmful if injected into a LinkedIn enrichment task on the same domain. Run-scoped memory guarantees samples within the same task help each other, while different tasks stay isolated.
 
-**After:** Failure signals are stored and injected into future prompts:
+Failure signals are stored and injected into prompts for later samples in the same run:
 
 ```
 ## Known issues on github.com (from past failures)

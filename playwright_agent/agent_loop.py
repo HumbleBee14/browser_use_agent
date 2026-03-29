@@ -67,14 +67,36 @@ from tools.output import OutputManager
 
 # Module-level singletons — reused across all samples for connection pooling
 _client: AsyncAnthropic | None = None
-_memory: MemoryStore | None = None
+# Memory is now run-scoped — stored in evidence/run_XXXX/memory/
+# Each run maintains its own patterns and failures, no cross-run leakage.
+_memory_cache: dict[str, MemoryStore] = {}
 
 
-def _get_memory() -> MemoryStore:
-    global _memory
-    if _memory is None:
-        _memory = MemoryStore()
-    return _memory
+def _get_memory(evidence_dir: Path) -> MemoryStore:
+    """Get or create a MemoryStore scoped to the run's evidence directory.
+
+    Memory is ALWAYS run-scoped — stored in evidence/run_XXXX/memory/.
+    Each run creates fresh or updates existing. No cross-run leakage.
+    """
+    key = str(evidence_dir.resolve())
+    if key not in _memory_cache:
+        memory_dir = evidence_dir / "memory"
+        memory_dir.mkdir(parents=True, exist_ok=True)
+        _memory_cache[key] = MemoryStore(memory_dir=memory_dir)
+    return _memory_cache[key]
+
+
+def clear_memory_cache(evidence_dir: Path | None = None) -> None:
+    """Drop cached run-scoped MemoryStore instances.
+
+    This matters when the same Python process handles multiple runs or resumes:
+    reloading from disk is safer than carrying possibly stale in-memory state
+    forward across logically separate runs.
+    """
+    if evidence_dir is None:
+        _memory_cache.clear()
+        return
+    _memory_cache.pop(str(evidence_dir.resolve()), None)
 
 
 def _get_client() -> AsyncAnthropic:
@@ -106,7 +128,10 @@ async def run(
     log.info(f"Agent loop started | url={sample.url} | max_steps={task_spec.max_steps}")
 
     client = _get_client()
-    memory = _get_memory()
+    # Memory is run-scoped — stored in evidence/run_XXXX/memory/
+    # Each run creates or updates its own memory, no cross-run leakage
+    evidence_dir = output_mgr.sample_dir.parent  # evidence/run_XXXX/
+    memory = _get_memory(evidence_dir)
     tools = action_tool_schema(include_reflection=config.REFLECTION_MODE == "full")
     history: list[dict] = []
     progress: dict = {

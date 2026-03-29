@@ -38,7 +38,7 @@ commit_006,done,ca0ea97...,305844,lszomoru,["roblourens"],lszomoru,18,0,False
 | Feature | Evidence |
 |---------|----------|
 | **Structured reflection** | Every step has eval/memory/goal in action_log.json |
-| **Memory distillation** | `memory/patterns.json` learned "pr_metadata_extraction" pattern for github.com |
+| **Memory distillation** | `evidence/run_XXXX/memory/patterns.json` learned "pr_metadata_extraction" pattern for github.com |
 | **Exactly 4 steps per commit** | Zero wasted steps, zero screenshot spam |
 | **Zero repeated actions** | Reflection prevents re-doing completed work |
 | **Judgments** | 85-97% confidence across all 6 commits |
