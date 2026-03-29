@@ -1,0 +1,48 @@
+{
+  "sample_id": "commit_002",
+  "status": "done",
+  "step": 4,
+  "max_steps": 15,
+  "accumulated_data": {
+    "commit_sha": "3f19f148dca9b1f01bb78c3f4fd5ba2fa65b1dbc",
+    "pr_number": "305817",
+    "pr_creator": "justschen",
+    "approvers": [
+      "rzhao271",
+      "zhichli"
+    ],
+    "merger": "justschen",
+    "checks_passed": 17,
+    "checks_failed": 1,
+    "merged_with_failures": true,
+    "ci_failure_details": "17/18 checks OK at merge (1 check failed)",
+    "jira_url": null,
+    "answer": "yes",
+    "confidence": 0.85,
+    "reasoning": "The PR #305817 was created by justschen, approved by two reviewers (rzhao271 and zhichli), and merged. While 17/18 checks passed with 1 failing check, the PR had proper reviews from two approvers with write access before merge, suggesting it was properly reviewed. The single failing check did not block the merge.",
+    "evidence_refs": [
+      "rzhao271 approved these changes",
+      "zhichli approved these changes",
+      "17 / 18 checks OK",
+      "justschen merged"
+    ]
+  },
+  "progress_notes": [],
+  "artifacts_so_far": [
+    {
+      "filename": "01_commit_page.png",
+      "sha256": "a97b39e54c80f60e2d5abada958b84c0959035c6f18e6b80493711e0bcb87115",
+      "source_url": "https://github.com/microsoft/vscode/commit/3f19f148dca9b1f01bb78c3f4fd5ba2fa65b1dbc",
+      "timestamp": "2026-03-29T06:44:58.786239+00:00"
+    },
+    {
+      "filename": "02_pr_page.png",
+      "sha256": "7f0ee3a796b3eddb6f45cfe11028dd5abee3555da52b6d9e468f2593fda74f83",
+      "source_url": "https://github.com/microsoft/vscode/pull/305817",
+      "timestamp": "2026-03-29T06:45:07.678849+00:00"
+    }
+  ],
+  "steps_logged": 4,
+  "started_at": "2026-03-29T06:44:28.282343+00:00",
+  "updated_at": "2026-03-29T06:45:14.812535+00:00"
+}

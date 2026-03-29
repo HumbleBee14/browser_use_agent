@@ -1,0 +1,7 @@
+sample_id,status,commit_sha,pr_number,pr_creator,approvers,merger,checks_passed,checks_failed,merged_with_failures,ci_failure_details,jira_url
+commit_001,done,2de60eada57a6ea88a11ff72091e26b2825e84af,305854,kycutler,"[""pwang347""]",kycutler,18,0,False,,
+commit_002,done,3f19f148dca9b1f01bb78c3f4fd5ba2fa65b1dbc,305817,justschen,"[""rzhao271"", ""zhichli""]",justschen,17,1,True,17/18 checks OK at merge (1 check failed),
+commit_003,done,5be9778feb0684fbd84935507ea63c49ed0b0f5c,305859,roblourens,"[""meganrogge"", ""zhichli""]",roblourens,18,0,False,,
+commit_004,done,b8b841a44fe3a1a496cdc113093afa83811dbab3,305847,lszomoru,"[""roblourens""]",lszomoru,18,0,False,,
+commit_005,done,b98ad1eadb1c4a959643feacdc14b14ce6db41dc,305796,pwang347,"[""joshspicer""]",pwang347,18,0,False,,
+commit_006,done,ca0ea977c63e180159c921986731aa3b71683d74,305844,lszomoru,"[""roblourens""]",lszomoru,18,0,False,,

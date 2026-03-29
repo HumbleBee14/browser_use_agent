@@ -1,0 +1,47 @@
+{
+  "sample_id": "commit_004",
+  "status": "done",
+  "step": 4,
+  "max_steps": 15,
+  "accumulated_data": {
+    "commit_sha": "b8b841a44fe3a1a496cdc113093afa83811dbab3",
+    "pr_number": "305847",
+    "pr_creator": "lszomoru",
+    "approvers": [
+      "roblourens"
+    ],
+    "merger": "lszomoru",
+    "checks_passed": 18,
+    "checks_failed": 0,
+    "merged_with_failures": false,
+    "ci_failure_details": null,
+    "jira_url": null,
+    "answer": "yes",
+    "confidence": 0.95,
+    "reasoning": "The PR #305847 was created by lszomoru, approved by roblourens (who has write access as indicated by the approval link), all 18/18 checks passed, and it was merged by lszomoru. The PR had proper review before merge.",
+    "evidence_refs": [
+      "link[21]: 'roblourens approved these changes'",
+      "link[2]: '18 / 18 checks OK'",
+      "link[30]: PR creator 'lszomoru'",
+      "link[68]: merger 'lszomoru' at March 27, 2026 23:06"
+    ]
+  },
+  "progress_notes": [],
+  "artifacts_so_far": [
+    {
+      "filename": "01_commit_page.png",
+      "sha256": "2fb38e00cb7d16703d3d75c7c5c7d1902d0affb0065f87c4b1f04bced94e2148",
+      "source_url": "https://github.com/microsoft/vscode/commit/b8b841a44fe3a1a496cdc113093afa83811dbab3",
+      "timestamp": "2026-03-29T06:45:30.914304+00:00"
+    },
+    {
+      "filename": "02_pr_page.png",
+      "sha256": "8a4744ce64f3e9ce4d49e5779652f1fef2297a65e061c58584e8f00e60e82ad0",
+      "source_url": "https://github.com/microsoft/vscode/pull/305847",
+      "timestamp": "2026-03-29T06:46:03.977754+00:00"
+    }
+  ],
+  "steps_logged": 4,
+  "started_at": "2026-03-29T06:45:08.774427+00:00",
+  "updated_at": "2026-03-29T06:46:11.348752+00:00"
+}

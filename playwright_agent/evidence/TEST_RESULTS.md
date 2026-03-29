@@ -1,6 +1,90 @@
 # Test Results — Browser Evidence Agent
 
 Each test validates a different capability from the project brief.
+---
+
+# Updated Code (with Reflection, Memory, Long-Horizon Support)
+
+*Ran with: reflection mode, memory distillation, save_progress, escalating recovery, smart termination*
+
+---
+
+## Test 10: 6-Commit Audit — Full Pipeline with New Features
+
+**Run:** `evidence/run_2026-03-29_024425/`
+
+**Input:**
+```
+python main.py --task tasks/github_commit_audit.json --input tasks/inputs/github_commits_6.csv --concurrency 3
+```
+
+**Result: 6/6 DONE in 129.8s | 0 warnings | 0 errors**
+
+**Combined CSV:**
+```csv
+sample_id,status,commit_sha,pr_number,pr_creator,approvers,merger,checks_passed,checks_failed,merged_with_failures
+commit_001,done,2de60ea...,305854,kycutler,["pwang347"],kycutler,18,0,False
+commit_002,done,3f19f14...,305817,justschen,["rzhao271","zhichli"],justschen,17,1,True
+commit_003,done,5be9778...,305859,roblourens,["meganrogge","zhichli"],roblourens,18,0,False
+commit_004,done,b8b841a...,305847,lszomoru,["roblourens"],lszomoru,18,0,False
+commit_005,done,b98ad1e...,305796,pwang347,["joshspicer"],pwang347,18,0,False
+commit_006,done,ca0ea97...,305844,lszomoru,["roblourens"],lszomoru,18,0,False
+```
+
+**Key finding:** commit_002 correctly detected `merged_with_failures: True` — 17/18 checks.
+
+**New features observed in action:**
+
+| Feature | Evidence |
+|---------|----------|
+| **Structured reflection** | Every step has eval/memory/goal in action_log.json |
+| **Memory distillation** | `memory/patterns.json` learned "pr_metadata_extraction" pattern for github.com |
+| **Exactly 4 steps per commit** | Zero wasted steps, zero screenshot spam |
+| **Zero repeated actions** | Reflection prevents re-doing completed work |
+| **Judgments** | 85-97% confidence across all 6 commits |
+
+**Reflection trace (commit_001):**
+```
+step 1: screenshot → eval: "Navigation succeeded" | mem: "SHA is 2de60ea" | goal: "Navigate to PR"
+step 2: click      → eval: "Screenshot taken, PR link visible" | mem: "PR #305854" | goal: "Navigate to PR"
+step 3: screenshot → eval: "On PR page now" | mem: "Approver pwang347" | goal: "Capture PR data"
+step 4: done       → eval: "All data visible" | mem: "All extracted" | goal: "Call done"
+```
+
+**Memory learned (saved for future runs):**
+```json
+{
+  "domain": "github.com",
+  "task_type": "pr_metadata_extraction",
+  "tips": ["Single screenshot per page captures all needed metadata",
+           "Direct goto() with commit SHA URL is fastest entry point"],
+  "avoid": ["Don't re-screenshot same page", "Don't manually construct PR URLs"]
+}
+```
+
+---
+
+## Test 11: Failure Scenario — Invalid API Key
+
+**Run:** `evidence/run_2026-03-29_023634/`
+
+**Input:** Same command but with wrong API key in .env
+
+**Result: 6/6 FAILED gracefully | 0 crashes | batch completed cleanly**
+
+**What worked correctly:**
+- Browsers launched and navigated to all 6 URLs ✓
+- DOM extracted, confidence computed ✓
+- LLM call failed with 401 → correctly identified as non-retryable ✓
+- Did NOT retry (auth errors are permanent) — smart retry logic ✓
+- Error written to result.json with clear message ✓
+- Workers didn't crash the batch ✓
+- Next batch of 3 workers launched after first 3 failed ✓
+- combined.csv generated with all 6 rows (status=failed) ✓
+
+---
+
+# Basic Code (earlier runs, before reflection/memory upgrade)
 
 ---
 

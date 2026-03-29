@@ -1,0 +1,49 @@
+{
+  "sample_id": "commit_001",
+  "status": "done",
+  "steps": 4,
+  "extracted": {
+    "commit_sha": "2de60eada57a6ea88a11ff72091e26b2825e84af",
+    "pr_number": "305854",
+    "pr_creator": "kycutler",
+    "approvers": [
+      "pwang347"
+    ],
+    "merger": "kycutler",
+    "checks_passed": 18,
+    "checks_failed": 0,
+    "merged_with_failures": false,
+    "ci_failure_details": null,
+    "jira_url": null
+  },
+  "artifacts": [
+    {
+      "filename": "01_commit_page.png",
+      "sha256": "d2b9c0eb1542a792cb070c292d4334186398c684b24d9d6f30422a9551865043",
+      "source_url": "https://github.com/microsoft/vscode/commit/2de60eada57a6ea88a11ff72091e26b2825e84af",
+      "timestamp": "2026-03-29T06:44:55.816545+00:00"
+    },
+    {
+      "filename": "02_pr_page.png",
+      "sha256": "d4f2ebdefc6cf6f5b86325d059a038894271b4d2943a1381fd75f57d9d04cb26",
+      "source_url": "https://github.com/microsoft/vscode/pull/305854",
+      "timestamp": "2026-03-29T06:45:28.878452+00:00"
+    }
+  ],
+  "judgment": {
+    "answer": "yes",
+    "confidence": 0.92,
+    "reasoning": "The PR #305854 was created by kycutler and approved by pwang347 before merging. The final commit (bb8f822) had 18/18 checks passing. Copilot also left review comments. The PR was merged by kycutler after receiving approval from pwang347, satisfying typical review requirements.",
+    "evidence_refs": [
+      "pwang347 approved these changes (link [28])",
+      "18 / 18 checks OK (element [17])",
+      "kycutler merged at March 28, 2026 00:11 (link [92])",
+      "PR #305854 created by kycutler (links [38], [44])"
+    ]
+  },
+  "flagged": false,
+  "notes": [],
+  "errors": [],
+  "started_at": "2026-03-29T06:44:28.226385+00:00",
+  "finished_at": "2026-03-29T06:45:37.324968+00:00"
+}

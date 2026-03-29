@@ -1,0 +1,49 @@
+{
+  "sample_id": "commit_005",
+  "status": "done",
+  "steps": 4,
+  "extracted": {
+    "commit_sha": "b98ad1eadb1c4a959643feacdc14b14ce6db41dc",
+    "pr_number": "305796",
+    "pr_creator": "pwang347",
+    "approvers": [
+      "joshspicer"
+    ],
+    "merger": "pwang347",
+    "checks_passed": 18,
+    "checks_failed": 0,
+    "merged_with_failures": false,
+    "ci_failure_details": null,
+    "jira_url": null
+  },
+  "artifacts": [
+    {
+      "filename": "01_commit_page.png",
+      "sha256": "759263c760adc0ba7a0cd74fdd63133386e328a61505e4b82a732b0f16a4410b",
+      "source_url": "https://github.com/microsoft/vscode/commit/b98ad1eadb1c4a959643feacdc14b14ce6db41dc",
+      "timestamp": "2026-03-29T06:45:37.424123+00:00"
+    },
+    {
+      "filename": "02_pr_page.png",
+      "sha256": "30f515ed518568a43ec7634f333d316387fb10482c2473ea5af0dc85ce8a6797",
+      "source_url": "https://github.com/microsoft/vscode/pull/305796",
+      "timestamp": "2026-03-29T06:46:08.248270+00:00"
+    }
+  ],
+  "judgment": {
+    "answer": "yes",
+    "confidence": 0.95,
+    "reasoning": "The commit was part of PR #305796 which was created by pwang347, approved by joshspicer (a reviewer with write access), and all 18/18 checks passed before merging. The PR had proper code review through both Copilot AI review and human approval from joshspicer.",
+    "evidence_refs": [
+      "link[30]: 'joshspicer approved these changes'",
+      "img[2]: '18 / 18 checks OK'",
+      "link[39]: 'pwang347' (PR creator)",
+      "link[82]: '#305796' (PR number)"
+    ]
+  },
+  "flagged": false,
+  "notes": [],
+  "errors": [],
+  "started_at": "2026-03-29T06:45:18.172825+00:00",
+  "finished_at": "2026-03-29T06:46:15.960712+00:00"
+}

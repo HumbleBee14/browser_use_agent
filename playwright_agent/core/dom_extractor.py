@@ -432,7 +432,15 @@ async def _get_page_metrics(page: Page, nodes: list[DOMNode]) -> PageMetrics:
 
 
 def _compute_confidence(metrics: PageMetrics) -> float:
-    """DOM confidence score. Below 0.6 → vision activates."""
+    """DOM confidence score. Below 0.6 → vision activates.
+
+    Weights:
+    - canvas: heavy penalty (0.3) — canvas content is invisible to DOM
+    - missing ARIA labels: medium penalty (0.2) — unlabeled buttons/links
+    - SVG: minimal penalty (0.02) — most SVGs are decorative (icons, arrows),
+      not data-carrying. Only truly matters when SVGs replace text status indicators.
+    - few semantic nodes: heavy penalty (0.3) — page is mostly images/canvas
+    """
     if metrics.total_nodes == 0:
         return 0.1
 
@@ -442,7 +450,7 @@ def _compute_confidence(metrics: PageMetrics) -> float:
     score = 1.0
     score -= 0.3 * (metrics.canvas_count / total)
     score -= 0.2 * (metrics.missing_aria_labels / interactive)
-    score -= 0.1 * (metrics.svg_count / interactive)
+    score -= 0.02 * (metrics.svg_count / interactive)  # SVGs are mostly decorative
 
     if metrics.semantic_nodes < 10:
         score -= 0.3
