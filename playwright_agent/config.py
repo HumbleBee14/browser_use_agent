@@ -18,6 +18,18 @@ ANTHROPIC_API_KEY: str = os.getenv("ANTHROPIC_API_KEY", "")
 LLM_MODEL: str = os.getenv("LLM_MODEL", "claude-sonnet-4-6")
 LLM_FAST_MODEL: str = os.getenv("LLM_FAST_MODEL", "claude-haiku-4-5")
 
+# Known context windows per model family (tokens).
+# Used to derive a safe prompt budget as a fraction of total capacity.
+MODEL_CONTEXT_WINDOWS: dict[str, int] = {
+    "claude-sonnet-4-6": 1_000_000,
+    "claude-haiku-4-5": 200_000,
+    "claude-opus-4": 200_000,
+}
+LLM_CONTEXT_WINDOW: int = int(os.getenv(
+    "LLM_CONTEXT_WINDOW",
+    str(MODEL_CONTEXT_WINDOWS.get(LLM_MODEL, 200_000)),
+))
+
 # --- Browser ---
 MAX_CONCURRENT: int = int(os.getenv("MAX_CONCURRENT", "5"))
 HEADLESS: bool = os.getenv("HEADLESS", "false").lower() == "true"

@@ -6,7 +6,7 @@ Everything else is scaffolding. This file is the agent.
 
 Key invariants:
 - Claude always returns a typed tool call (tool_choice=any), never prose
-- History capped at last 5 actions — token cost stays flat
+- History window is dynamic — fits as many recent actions as the token budget allows
 - Actions always return ActionResult, never raise
 - done/fail terminate the loop — max_steps is the hard ceiling
 - Loop detection: same (url, action) 3+ times → inject recovery nudge
@@ -80,7 +80,16 @@ async def run(
     memory = _get_memory()
     tools = action_tool_schema()
     history: list[dict] = []
-    progress: dict = {"pages_visited": [], "fields_found": [], "artifacts": []}
+    progress: dict = {
+        "pages_visited": [],
+        "fields_found": [],
+        "artifacts": [],
+        "failed_urls": [],         # URLs that errored (404, timeout, auth)
+        "exhausted_pages": [],     # pages where all useful data was already extracted
+        "blocked_selectors": [],   # selectors that failed 2+ times
+        "dead_ends": [],           # actions/paths that led nowhere
+    }
+    _selector_fail_counts: dict[str, int] = {}  # track selector failures for blocked detection
     loop_counter: dict[tuple, int] = {}  # (url, action_name) → count
     consecutive_failures = 0
     step = 0
@@ -149,6 +158,11 @@ async def run(
                 notes=progress_notes,
                 steps=step,
             )
+            if sample.url and status != "done":
+                try:
+                    memory.learn_failures(sample.url, progress, status, reason=reason)
+                except Exception:
+                    pass
             return
 
         # ---- 1. OBSERVE ----
@@ -169,10 +183,14 @@ async def run(
                 vision_text = ""
 
         # ---- 2. BUILD PROMPT ----
+        # Dynamic history window: estimate fixed prompt costs, then fit history to budget
+        fixed_tokens = _estimate_tokens(page_state + vision_text + task_spec.system_prompt + task_spec.goal)
+        fitted_history = _fit_history(history, fixed_tokens)
+
         messages = _build_messages(
             page_state=page_state,
             vision_text=vision_text,
-            history=history[-5:],  # rolling 5-action cap
+            history=fitted_history,
             task_spec=task_spec,
             sample=sample,
             snap=snap,
@@ -189,11 +207,11 @@ async def run(
         log.info(
             f"Step {step} LLM input | "
             f"dom_nodes={len(snap.nodes)} | confidence={snap.confidence:.2f} | "
-            f"history_items={len(history[-5:])} | vision={'yes' if vision_text else 'no'}"
+            f"history_items={len(fitted_history)} | vision={'yes' if vision_text else 'no'}"
         )
         log.debug(f"Step {step} system_prompt | {task_spec.system_prompt[:300]}")
         log.debug(f"Step {step} page_state | {page_state[:500]}")
-        log.debug(f"Step {step} history | {json.dumps(history[-5:], default=str)[:500]}")
+        log.debug(f"Step {step} history | {json.dumps(fitted_history, default=str)[:500]}")
         if vision_text:
             log.debug(f"Step {step} vision | {vision_text[:300]}")
 
@@ -282,10 +300,30 @@ async def run(
             url_short = (action.url or page.url)[:80]
             if url_short not in progress["pages_visited"]:
                 progress["pages_visited"].append(url_short)
+        if action.action == "goto" and not action_result.success:
+            failed_url = (action.url or "")[:80]
+            if failed_url and failed_url not in progress["failed_urls"]:
+                progress["failed_urls"].append(failed_url)
         if action.action == "screenshot" and action_result.success:
             progress["artifacts"].append(action.label or "screenshot")
         if action_result.extracted_text:
             progress["fields_found"].append(action_result.extracted_text[:50])
+
+        # Track selector failures → blocked_selectors after 2 failures
+        if not action_result.success and action.selector:
+            sel = action.selector[:60]
+            _selector_fail_counts[sel] = _selector_fail_counts.get(sel, 0) + 1
+            if _selector_fail_counts[sel] >= 2 and sel not in progress["blocked_selectors"]:
+                progress["blocked_selectors"].append(sel)
+                log.info(f"Step {step} | Selector blocked (failed {_selector_fail_counts[sel]}x): {sel}")
+
+        # Track dead ends — repeated action on same URL with no data produced
+        url_action_key = (page.url[:80], action.action)
+        if loop_counter.get(url_action_key, 0) >= 3:
+            dead = f"{action.action} on {page.url[:60]}"
+            if dead not in progress["dead_ends"]:
+                progress["dead_ends"].append(dead)
+                log.info(f"Step {step} | Dead end detected: {dead}")
 
         # ---- NETWORK ERROR TRACKING ----
         if not action_result.success and _is_infra_error(action_result.error or ""):
@@ -307,6 +345,10 @@ async def run(
             progress_notes.append(note)
             if data_changed:
                 items_collected += 1
+                # Mark current page as exhausted (data extracted) so agent knows not to revisit
+                current_url = page.url[:80]
+                if current_url not in progress["exhausted_pages"]:
+                    progress["exhausted_pages"].append(current_url)
             log.info(f"Step {step} | save_progress #{items_collected} | new_data={data_changed} | {note} | keys={list(partial.keys())}")
             output_mgr.write_checkpoint(step, accumulated, progress_notes)
 
@@ -354,8 +396,8 @@ async def run(
             })
 
         # ---- STEP SUMMARY: LLM-powered condensation every N steps ----
-        if step > 0 and step % SUMMARY_INTERVAL == 0 and len(history) > 5:
-            summary = await _summarize_steps(client, history[:-5], task_spec.goal, log)
+        if step > 0 and step % SUMMARY_INTERVAL == 0 and len(history) > MIN_HISTORY_ITEMS:
+            summary = await _summarize_steps(client, history[:-MIN_HISTORY_ITEMS], task_spec.goal, log)
             step_summaries.append(summary)
             log.info(f"Step {step} | LLM summary generated | {summary[:100]}")
 
@@ -459,14 +501,22 @@ async def run(
                 steps=step,
             )
 
-            # Learn from successful runs — distill navigation pattern for future use
-            if final_status == "done" and sample.url:
+            # Learn from runs — successes become patterns, failures become warnings
+            if sample.url:
                 try:
-                    learned = await memory.learn_from_run(
-                        client, sample.url, task_spec.goal, history, step, final_status,
-                    )
-                    if learned:
-                        log.info(f"Memory saved | domain pattern learned for {sample.url}")
+                    if final_status == "done":
+                        learned = await memory.learn_from_run(
+                            client, sample.url, task_spec.goal, history, step, final_status,
+                        )
+                        if learned:
+                            log.info(f"Memory saved | domain pattern learned for {sample.url}")
+                    else:
+                        learned = memory.learn_failures(
+                            sample.url, progress, final_status,
+                            reason=completion_notes[-1] if completion_notes else "",
+                        )
+                        if learned:
+                            log.info(f"Memory saved | failure warnings stored for {sample.url}")
                 except Exception as e:
                     log.debug(f"Memory save failed (non-critical): {e}")
             return
@@ -478,6 +528,15 @@ async def run(
                 errors=[action.note or "Agent called fail"],
                 steps=step,
             )
+            # Learn from failure — store dead ends, broken selectors, failed URLs
+            if sample.url:
+                try:
+                    memory.learn_failures(
+                        sample.url, progress, "failed",
+                        reason=action.note or "Agent called fail",
+                    )
+                except Exception:
+                    pass
             return
 
         # ---- 6. LOOP & FAILURE TRACKING ----
@@ -708,10 +767,10 @@ async def _summarize_steps(
     goal: str,
     log,
 ) -> str:
-    """Ask Claude (fast model) to summarize a block of steps into 2-3 sentences.
+    """Produce a structured summary: findings, gaps, next actions.
 
-    Uses the cheap/fast model to keep costs low. Falls back to mechanical
-    summary if the LLM call fails.
+    Uses the cheap/fast model. Returns a compact structured block the
+    agent can act on immediately. Falls back to mechanical summary.
     """
     step_text = "\n".join(
         f"Step {h['step']}: {h['action']}({json.dumps(h.get('params', {}), default=str)[:80]}) → {h.get('result', '')[:80]}"
@@ -720,21 +779,102 @@ async def _summarize_steps(
     try:
         response = await client.messages.create(
             model=config.LLM_FAST_MODEL,
-            max_tokens=200,
+            max_tokens=250,
             messages=[{
                 "role": "user",
                 "content": (
-                    f"Summarize these browser agent steps in 2-3 sentences. "
-                    f"Focus on what was accomplished and what data was collected. "
-                    f"Task goal: {goal}\n\nSteps:\n{step_text}"
+                    f"Summarize these browser agent steps in a structured format. "
+                    f"Task goal: {goal}\n\nSteps:\n{step_text}\n\n"
+                    f"Reply in EXACTLY this format (3 lines, no extra text):\n"
+                    f"FOUND: <what data/evidence was collected>\n"
+                    f"GAPS: <what is still missing or incomplete>\n"
+                    f"NEXT: <best next action to make progress>"
                 ),
             }],
         )
-        return f"Steps {steps[0]['step']}-{steps[-1]['step']}: {response.content[0].text.strip()}"
+        return f"Steps {steps[0]['step']}-{steps[-1]['step']}:\n{response.content[0].text.strip()}"
     except Exception as e:
         log.debug(f"LLM summary failed, using mechanical fallback: {str(e)[:100]}")
         actions = "; ".join(f"s{h['step']}:{h['action']}" for h in steps)
         return f"Steps {steps[0]['step']}-{steps[-1]['step']}: {actions}"
+
+
+def _estimate_tokens(text: str) -> int:
+    """Rough token estimate: ~4 chars per token for English/code mix."""
+    return max(1, len(text) // 4)
+
+
+# Token budget = 8% of model context window, capped at 24K, floor 8K.
+# Why 8%: LLMs lose attention on mid-prompt content above ~20% fill ("lost in the middle" — Liu et al. 2023).
+# Cap at 24K: even a 1M-context model doesn't need 80K of prompt for a browser agent step.
+PROMPT_TOKEN_BUDGET = min(24_000, max(8_000, int(config.LLM_CONTEXT_WINDOW * 0.08)))
+HISTORY_TOKEN_SHARE = 0.30  # 30% of budget goes to action history
+MIN_HISTORY_ITEMS = 5
+MAX_HISTORY_ITEMS = 25
+
+# Importance weights — data-producing actions get priority in the window
+_IMPORTANCE: dict[str, int] = {
+    "save_progress": 3,
+    "done": 3,
+    "fail": 3,
+    "extract": 2,
+    "screenshot": 1,
+    "system_notice": 2,
+    "click": 1,
+    "goto": 1,
+    "type": 1,
+    "scroll": 0,
+    "wait": 0,
+}
+
+
+def _fit_history(full_history: list[dict], fixed_tokens: int) -> list[dict]:
+    """Dynamically select history items that fit within the token budget.
+
+    Strategy (hybrid approach from industry best practices):
+    1. Calculate remaining token budget after fixed costs (DOM, vision, goal, etc.)
+    2. Always include the last MIN_HISTORY_ITEMS (recency matters most)
+    3. For older items, score by importance and include highest-value ones first
+    4. Stop when budget is exhausted or MAX_HISTORY_ITEMS reached
+    """
+    budget = max(500, int(PROMPT_TOKEN_BUDGET * HISTORY_TOKEN_SHARE))
+
+    if not full_history:
+        return []
+
+    # Always include the most recent items (verbatim recency window)
+    recency_window = full_history[-MIN_HISTORY_ITEMS:]
+    recency_tokens = sum(_estimate_tokens(json.dumps(h, default=str)) for h in recency_window)
+
+    remaining_budget = budget - recency_tokens
+    if remaining_budget <= 0 or len(full_history) <= MIN_HISTORY_ITEMS:
+        return recency_window
+
+    # Score older items by importance and select the most valuable ones
+    older = full_history[:-MIN_HISTORY_ITEMS]
+    scored = []
+    for i, item in enumerate(older):
+        action = item.get("action", "")
+        importance = _IMPORTANCE.get(action, 0)
+        recency_bonus = i / max(len(older), 1)  # 0.0 (oldest) → 1.0 (most recent)
+        score = importance + recency_bonus
+        tokens = _estimate_tokens(json.dumps(item, default=str))
+        scored.append((score, tokens, item))
+
+    scored.sort(key=lambda x: x[0], reverse=True)
+
+    selected_older = []
+    tokens_used = 0
+    for score, tokens, item in scored:
+        if tokens_used + tokens > remaining_budget:
+            continue
+        selected_older.append(item)
+        tokens_used += tokens
+        if len(selected_older) + len(recency_window) >= MAX_HISTORY_ITEMS:
+            break
+
+    selected_older.sort(key=lambda x: x.get("step", 0))
+    return selected_older + recency_window
 
 
 def _build_messages(
@@ -758,7 +898,7 @@ def _build_messages(
       USER message with:
         - Current page state (DOM)
         - Vision analysis (if activated)
-        - Action history (last 5)
+        - Action history (dynamically sized)
         - Recovery nudges (if stuck)
         - Goal + output schema
     """
@@ -787,7 +927,7 @@ def _build_messages(
     if step_summaries:
         parts.append(f"\n## Earlier steps (condensed)\n" + "\n".join(step_summaries[-3:]))
 
-    # Progress summary (persists beyond history window — long-horizon memory)
+    # Progress summary (persists beyond history window — structured run state)
     if progress and any(progress.values()):
         progress_lines = []
         if progress.get("pages_visited"):
@@ -796,8 +936,16 @@ def _build_messages(
             progress_lines.append(f"Screenshots taken: {', '.join(progress['artifacts'])}")
         if progress.get("fields_found"):
             progress_lines.append(f"Data extracted so far: {', '.join(progress['fields_found'][-5:])}")
+        if progress.get("failed_urls"):
+            progress_lines.append(f"FAILED URLs (skip these): {', '.join(progress['failed_urls'][-5:])}")
+        if progress.get("blocked_selectors"):
+            progress_lines.append(f"BROKEN selectors (don't retry): {', '.join(progress['blocked_selectors'][-5:])}")
+        if progress.get("dead_ends"):
+            progress_lines.append(f"DEAD ENDS (tried, didn't work): {', '.join(progress['dead_ends'][-3:])}")
+        if progress.get("exhausted_pages"):
+            progress_lines.append(f"Exhausted pages (all data taken): {', '.join(progress['exhausted_pages'][-5:])}")
         if progress_lines:
-            parts.append(f"\n## Progress so far\n" + "\n".join(progress_lines))
+            parts.append(f"\n## Run state\n" + "\n".join(progress_lines))
 
     # Action history (last 5 steps — recent context)
     if history:
@@ -805,7 +953,7 @@ def _build_messages(
             f"Step {h['step']}: {h['action']} → {h.get('result', '')[:100]}"
             for h in history
         )
-        parts.append(f"\n## Recent actions (last {len(history)})\n{history_text}")
+        parts.append(f"\n## Action history ({len(history)} items, budget-fitted)\n{history_text}")
 
     # Loop detection nudge
     for (url, act_name), count in loop_counter.items():

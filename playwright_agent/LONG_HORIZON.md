@@ -11,7 +11,7 @@ Standard tasks (profile extraction, single-page audit) complete in 2-10 steps. L
 Before these changes, the agent had:
 
 - Hard `max_steps` ceiling (only termination)
-- Rolling 5-action history (forgets everything older)
+- Fixed 5-action history (forgets everything older)
 - All-or-nothing output (`done` or `failed`, no partial saves)
 - No awareness of how much work is left
 
@@ -80,11 +80,12 @@ Extracted title, author, reviewer. Took screenshot and saved progress.
 Navigated back to the list.
 ```
 
-This replaces the raw step list for old history. The agent sees:
+This replaces the raw step list for old history. Summaries now use a **structured FOUND/GAPS/NEXT** format (see Part 5). The agent sees:
 
-- LLM summaries of earlier work (long-term memory)
-- Last 5 raw actions (recent context)
+- Structured LLM summaries of earlier work (findings, gaps, next actions)
+- Dynamic budget-fitted recent actions (5-25 items, importance-scored)
 - Full accumulated data (what was collected)
+- Structured run state (failures, dead ends, blocked selectors)
 
 Cost: < $0.001 per summary. Falls back to mechanical concatenation if the LLM call fails.
 
@@ -254,14 +255,17 @@ Title: user123 (John Doe)
 }
 
 ## Earlier steps (condensed)
-Steps 1-10: Navigated to contributors page, clicked into torvalds profile.
-Extracted name and followers. Took screenshot. Saved progress. Navigated back.
+Steps 1-10:
+FOUND: Extracted name, company, followers for torvalds and gvanrossum. Screenshots taken.
+GAPS: 1 of 3 contributors still not visited. user123 profile not started.
+NEXT: Navigate to user123's profile and extract the same fields.
 
-## Progress so far
+## Run state
 Pages visited: github.com/microsoft/vscode/graphs/contributors, github.com/torvalds, github.com/gvanrossum, github.com/user123
 Screenshots taken: contributors_list, profile_torvalds, profile_gvanrossum
+Exhausted pages (all data taken): github.com/torvalds, github.com/gvanrossum
 
-## Recent actions (last 5)
+## Action history (5 items, budget-fitted)
 Step 12: goto → Navigated to https://github.com/user123
 Step 13: screenshot(profile_user123) → Screenshot saved: 04_profile_user123.png
 Step 14: extract(1) → Extracted 45 chars
@@ -279,6 +283,120 @@ Take the single best next action.
 
 ---
 
+---
+
+### Part 5 — Research-Backed Memory Architecture
+
+**Files changed:** `agent_loop.py`, `memory.py`, `config.py`
+
+**Research basis:**
+- [CoALA](https://openreview.net/forum?id=1i6ZCvflQJ) (Princeton, TMLR 2024): modular memory — working, episodic, procedural
+- [Lost in the Middle](http://export.arxiv.org/abs/2307.03172) (Stanford, 2023): keep prompt fill below 20% of context
+- [ReSum](https://arxiv.org/abs/2509.13313) (Alibaba, 2025): structured goal-oriented summaries for indefinite exploration
+- [BrowserUse + Mem0](https://mem0.ai/blog): procedural memory snapshots for 98% task completion, 41% cost reduction
+
+---
+
+#### Upgrade 1: Structured Run State
+
+The `progress` dict now tracks failures and dead ends, not just successes:
+
+```python
+progress = {
+    "pages_visited": [],         # URLs successfully loaded
+    "fields_found": [],          # data snippets extracted
+    "artifacts": [],             # screenshots taken
+    "failed_urls": [],           # URLs that errored (404, timeout, auth)
+    "exhausted_pages": [],       # pages where data was already extracted
+    "blocked_selectors": [],     # selectors that failed 2+ times
+    "dead_ends": [],             # actions repeated 3+ times with no progress
+}
+```
+
+This state is injected into every prompt under "## Run state" so the agent knows what to skip:
+
+```
+## Run state
+Pages visited: github.com/torvalds, github.com/gvanrossum
+FAILED URLs (skip these): github.com/deleted-user-404
+BROKEN selectors (don't retry): div.old-layout-sidebar
+DEAD ENDS (tried, didn't work): click on github.com/microsoft/vscode/graphs
+Exhausted pages (all data taken): github.com/torvalds
+```
+
+Selector failure tracking: after a selector fails 2 times, it's flagged as "blocked" so the agent stops retrying it.
+
+Page exhaustion: when `save_progress` successfully extracts new data from a page, that URL is marked as exhausted.
+
+---
+
+#### Upgrade 2: Episodic Failure Memory
+
+`MemoryStore` now stores two kinds of memories:
+
+| Type | File | Learned from | Contains |
+|---|---|---|---|
+| Procedural patterns | `memory/patterns.json` | `done` runs | action sequences, tips, things to avoid |
+| Episodic warnings | `memory/failures.json` | `failed` / `partial_success` runs | dead URLs, broken selectors, dead ends, failure reason |
+
+**Before:** Only successful runs were remembered. Every new run on the same domain would hit the same dead ends again.
+
+**After:** Failure signals are stored and injected into future prompts:
+
+```
+## Known issues on github.com (from past failures)
+Dead URLs (skip): github.com/deleted-user-404
+Broken selectors: div.old-layout-sidebar
+Previous failure: Expected 5 items but collected 3
+```
+
+`learn_failures()` is called from:
+- Smart termination (timeout, network circuit breaker)
+- Agent calling `fail()`
+- `done` with `partial_success` status
+
+---
+
+#### Upgrade 3: Structured Summary Schema (ReSum-inspired)
+
+**Before:** Step summaries were generic prose:
+```
+Steps 1-10: Navigated to contributors page, clicked into torvalds profile.
+Extracted name and followers. Took screenshot.
+```
+
+**After:** Summaries follow a structured FOUND/GAPS/NEXT format:
+```
+Steps 1-10:
+FOUND: Extracted name, company, followers for torvalds. Screenshot taken.
+GAPS: 2 of 3 contributors still not visited. No bio data collected yet.
+NEXT: Navigate back to contributors list and click the next profile.
+```
+
+This is directly inspired by ReSum (Alibaba, 2025) which showed that structured summaries with "verified evidence + information gaps + next-step directions" outperform prose summaries by 4.5% on long-horizon web tasks.
+
+---
+
+#### Upgrade 4: Token Budget Formula
+
+```python
+PROMPT_TOKEN_BUDGET = min(24_000, max(8_000, int(LLM_CONTEXT_WINDOW * 0.08)))
+```
+
+- **8% of context window**: Stays well below the "lost in the middle" degradation zone (~20% fill)
+- **Floor 8K**: Even a small model gets a usable budget
+- **Cap 24K**: A 1M-context model doesn't waste 80K of prompt on a single browser step
+- **Overridable**: Set `LLM_CONTEXT_WINDOW` in `.env` for non-standard models
+
+| Model | Context | Budget | History (30%) |
+|---|---|---|---|
+| Claude Sonnet (200K) | 200K | 16,000 | 4,800 |
+| Claude Haiku (200K) | 200K | 16,000 | 4,800 |
+| Future 1M model | 1M | 24,000 (capped) | 7,200 |
+| Small 32K model | 32K | 8,000 (floor) | 2,400 |
+
+---
+
 ## Architecture Summary
 
 ```
@@ -288,11 +406,17 @@ Before long-horizon:
   output = all-or-nothing (done or failed)
 
 After long-horizon:
-  history = last 5 actions + LLM summaries + accumulated data + progress tracker
+  memory:
+    working   = dynamic budget-fitted window (5-25 items, importance-scored)
+    summaries = structured FOUND/GAPS/NEXT every 10 steps (Haiku, <$0.001)
+    run state = pages visited, failed URLs, blocked selectors, dead ends, exhausted pages
+    procedural = domain-keyed patterns from successful runs (patterns.json)
+    episodic  = failure warnings from failed runs (failures.json)
   termination = 8 conditions checked every step
   output = done | partial_success | failed | needs_review
   checkpoint = live file updated every 5 steps
   pagination = auto-detected, bonus steps granted
   watchdog = stall detection with nudge injection
   budget = agent sees "Step X of Y (N remaining)"
+  token budget = min(24K, max(8K, context_window * 8%))
 ```
