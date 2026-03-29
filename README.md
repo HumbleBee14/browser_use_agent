@@ -379,10 +379,10 @@ The design is informed by recent research on long-horizon web agents:
 
 | Document | Description |
 |----------|-------------|
-| [HOW_IT_WORKS.md](playwright_agent/HOW_IT_WORKS.md) | Full technical overview — every component explained |
-| [ARCHITECTURE.md](playwright_agent/ARCHITECTURE.md) | System design, layer-by-layer breakdown |
-| [LONG_HORIZON.md](playwright_agent/LONG_HORIZON.md) | Long-horizon task support — memory, checkpointing, recovery |
-| [BUILD.md](playwright_agent/BUILD.md) | Build & run guide, environment setup, project structure |
+| [HOW_IT_WORKS.md](playwright_agent/docs/HOW_IT_WORKS.md) | Full technical overview — every component explained |
+| [ARCHITECTURE.md](playwright_agent/docs/ARCHITECTURE.md) | System design, layer-by-layer breakdown |
+| [LONG_HORIZON.md](playwright_agent/docs/LONG_HORIZON.md) | Long-horizon task support — memory, checkpointing, recovery |
+| [BUILD.md](playwright_agent/docs/BUILD.md) | Build & run guide, environment setup, project structure |
 
 ---
 
