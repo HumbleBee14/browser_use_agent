@@ -20,22 +20,22 @@ from anthropic import AsyncAnthropic
 
 import config
 
-_DISTILL_PROMPT = """Analyze this browser agent's action log from a successful task and extract a reusable navigation pattern.
+_DISTILL_PROMPT = """Analyze this browser agent's full action log from a completed task. Steps marked FAIL show what didn't work. Use both successes and failures to extract a reusable navigation pattern.
 
 Goal: {goal}
 Domain: {domain}
 Steps taken: {steps}
 
-Action log (successful steps only):
+Full action log:
 {log_text}
 
 Return a JSON object with exactly these fields:
 - task_type: short label like "profile_extraction", "data_collection", "audit"
 - action_sequence: list of 4-7 ABSTRACT reusable steps (not URLs or selectors, just patterns like "goto profile page", "extract sidebar data", "screenshot evidence", "save_progress", "goto back to listing")
-- tips: list of 2-4 site-specific navigation tips the agent should know next time (e.g. "follower count is a link element", "DOM confidence is low due to SVG contribution graph - vision adds minimal value", "use goto(url) to return, not browser back")
-- avoid: list of 1-2 things that wasted steps (e.g. "don't re-screenshot same page", "don't call save_progress with duplicate data")
+- tips: list of 2-4 site-specific navigation tips based on what WORKED (e.g. "follower count is a link element", "use goto(url) to return, not browser back", "sidebar has all profile data in one view")
+- avoid: list of 1-3 things that FAILED or wasted steps (e.g. "selector X broke — use Y instead", "don't re-screenshot same page", "scrolling the contributions graph yields nothing useful")
 
-Keep it SHORT — under 200 tokens total. Focus on what saves steps next time.
+Keep it SHORT — under 250 tokens total. Contrast what worked vs what failed.
 Return ONLY valid JSON, no markdown."""
 
 
@@ -187,16 +187,15 @@ class MemoryStore:
         if not domain:
             return False
 
-        successful_steps = [
+        agent_steps = [
             s for s in history
             if s.get("action") not in ("system_notice",)
-            and "failed" not in str(s.get("result", "")).lower()[:50]
         ]
 
-        if len(successful_steps) < 3:
+        if len(agent_steps) < 3:
             return False
 
-        pattern = await self._distill(client, domain, goal, successful_steps, steps)
+        pattern = await self._distill(client, domain, goal, agent_steps, steps)
         if not pattern:
             return False
 
@@ -227,13 +226,18 @@ class MemoryStore:
         steps_list: list[dict],
         total_steps: int,
     ) -> dict | None:
-        """Use fast model to extract a compact pattern from the action log."""
-        log_text = "\n".join(
-            f"Step {s.get('step', '?')}: {s.get('action', '?')}"
-            f"({json.dumps(s.get('params', {}), default=str)[:80]}) "
-            f"→ {str(s.get('result', ''))[:120]}"
-            for s in steps_list[:30]
-        )
+        """Use fast model to extract a compact pattern from the full action log."""
+        def _format_step(s: dict) -> str:
+            result_str = str(s.get("result", ""))
+            failed = "failed" in result_str.lower()[:50]
+            tag = "FAIL" if failed else "OK"
+            return (
+                f"[{tag}] Step {s.get('step', '?')}: {s.get('action', '?')}"
+                f"({json.dumps(s.get('params', {}), default=str)[:80]}) "
+                f"→ {result_str[:120]}"
+            )
+
+        log_text = "\n".join(_format_step(s) for s in steps_list[:30])
 
         try:
             response = await client.messages.create(
@@ -258,11 +262,13 @@ class MemoryStore:
         except Exception:
             pass
 
-        actions = [s.get("action", "") for s in steps_list if s.get("action") != "system_notice"]
-        unique = list(dict.fromkeys(actions))
+        ok_actions = [s.get("action", "") for s in steps_list
+                      if "failed" not in str(s.get("result", "")).lower()[:50]]
+        failed_actions = [s.get("action", "") for s in steps_list
+                         if "failed" in str(s.get("result", "")).lower()[:50]]
         return {
             "task_type": "general",
-            "action_sequence": unique[:7],
+            "action_sequence": list(dict.fromkeys(ok_actions))[:7],
             "tips": [],
-            "avoid": [],
+            "avoid": [f"{a} failed" for a in dict.fromkeys(failed_actions)][:3],
         }
