@@ -95,7 +95,7 @@ Cost: < $0.001 per summary. Falls back to mechanical concatenation if the LLM ca
 
 **Extract → accumulated buffer:**
 
-Every `extract` action result is now stored in `accumulated["extracted_texts"]`. This means if the agent extracts text from a page, that text persists in memory even after the 5-action history window slides past it.
+Every `extract` action result is now stored in `accumulated["extracted_texts"]`. This means if the agent extracts text from a page, that text persists in memory even after the recent-action window slides past it.
 
 ---
 
@@ -269,7 +269,7 @@ Pages visited: github.com/microsoft/vscode/graphs/contributors, github.com/torva
 Screenshots taken: contributors_list, profile_torvalds, profile_gvanrossum
 Exhausted pages (all data taken): github.com/torvalds, github.com/gvanrossum
 
-## Action history (5 items, budget-fitted)
+## Action history (recent items, budget-fitted)
 Step 12: goto → Navigated to https://github.com/user123
 Step 13: screenshot(profile_user123) → Screenshot saved: 04_profile_user123.png
 Step 14: extract(1) → Extracted 45 chars
@@ -401,6 +401,118 @@ PROMPT_TOKEN_BUDGET = min(24_000, max(8_000, int(LLM_CONTEXT_WINDOW * 0.08)))
 
 ---
 
+## Part 6 — Browser-Use Inspired Improvements
+
+**Files changed:** `agent_loop.py`, `models/actions.py`, `config.py`
+
+**Research basis:**
+- [browser-use](https://github.com/browser-use/browser-use): structured self-evaluation, escalating recovery, budget pressure, multi-action batching
+- Decision hygiene: explicit reflection fields instead of incidental text
+
+---
+
+### Upgrade 1: Structured Self-Evaluation
+
+Every action now includes three optional reflection fields:
+
+```python
+class AgentAction(BaseModel):
+    # ... existing fields ...
+    evaluation_previous_step: str | None = None  # "Did my last action work?"
+    memory_update: str | None = None             # "What to remember going forward"
+    next_goal: str | None = None                 # "What I'll do next and why"
+```
+
+- No extra LLM call — reflection is part of the tool call response
+- Truncated to 160 chars to prevent token bloat
+- Stored in `StepRecord` → appears in `action_log.json` audit trail
+- `memory_update` and `next_goal` shown in history for context continuity
+- Controlled by `REFLECTION_MODE`: "full" (default) or "light" (omits reflection instructions, saves tokens)
+
+---
+
+### Upgrade 2: Escalating Loop/Stagnation Detection
+
+Replaces the old flat watchdog with a 3-level escalation using page signature hashing:
+
+**Page signature** = MD5 of (normalized URL + first 2K of DOM text). Same signature + no new data → stagnation count increases.
+
+| Level | Trigger | Response |
+|-------|---------|----------|
+| 1 (gentle) | 3 stagnant steps | "Try a different approach" |
+| 2 (forceful) | 5 stagnant steps | "CHANGE YOUR STRATEGY NOW" + checkpoint saved |
+| 3 (critical) | 8 stagnant steps | "MUST call done or fail" |
+
+Unified into `_build_recovery_notice()` which also catches:
+- Action spam (4+ identical actions on same URL)
+- Consecutive failure recovery (3+ failures → visible element list)
+
+---
+
+### Upgrade 3: Budget Pressure Warnings
+
+One-time notices injected at step-budget thresholds:
+
+| Threshold | Message |
+|-----------|---------|
+| 75% used | "Start consolidating results — call save_progress, then finalize with done" |
+| 90% used | "URGENT — save any unsaved data NOW, then call done immediately" |
+| Final step | Tools restricted to `done` and `fail` only (via `_get_terminal_tools()`) |
+
+Each fires exactly once — no spam.
+
+---
+
+### Upgrade 4: Final-Response-After-Failure
+
+`_attempt_final_consolidation()` — one last LLM call when:
+- `max_steps` exhausted with accumulated data
+- LLM retries all fail with accumulated data
+
+The consolidation call receives accumulated data + task schema and produces best-effort structured output. Fits the existing `partial_success` model.
+
+When the primary model just failed, prefers the fallback model (if `ENABLE_FALLBACK_LLM=true`).
+
+---
+
+### Upgrade 5: Fallback LLM
+
+When `ENABLE_FALLBACK_LLM=true` (default: false):
+- Primary model retried 3x with exponential backoff
+- One attempt on `FALLBACK_LLM_MODEL` (default: Claude Haiku)
+- If fallback succeeds, continues the run
+- Model switch is explicitly logged
+
+---
+
+### Upgrade 6: Multi-Action Batching (Experimental)
+
+When `ENABLE_MULTI_ACTIONS=true` (default: false):
+- LLM can return multiple tool calls per step (max `MAX_ACTIONS_PER_STEP`, default 3)
+- Sub-actions execute sequentially with safety guards:
+  - Batch-breaking actions (`goto`, `done`, `fail`, `save_progress`) abort remaining
+  - URL change → abort (stale element map)
+  - DOM stability check: >20% shift in interactive element count → abort
+  - Any failure → abort
+- Fresh DOM refresh before each sub-action
+- Full per-sub-action logging in `action_log.json`
+- Best for: form fills, repetitive extraction. Not for navigation-heavy flows.
+
+---
+
+### New Config Flags
+
+```
+REFLECTION_MODE=full              # "full" or "light"
+FINALIZE_ON_FAILURE=true          # best-effort consolidation on exhaustion/failure
+ENABLE_FALLBACK_LLM=false         # try fallback model on primary failure
+FALLBACK_LLM_MODEL=claude-haiku-4-5
+ENABLE_MULTI_ACTIONS=false        # experimental multi-action batching
+MAX_ACTIONS_PER_STEP=3            # max sub-actions per batch
+```
+
+---
+
 ## Architecture Summary
 
 ```
@@ -409,18 +521,26 @@ Before long-horizon:
   termination = max_steps only
   output = all-or-nothing (done or failed)
 
-After long-horizon:
+After long-horizon + browser-use improvements:
+  reflection:
+    evaluation  = structured self-assessment per step
+    memory      = explicit working scratchpad per step
+    next_goal   = declared intent before acting
   memory:
     working   = dynamic budget-fitted window (5-25 items, importance-scored)
     summaries = structured FOUND/GAPS/NEXT every 10 steps (Haiku, <$0.001)
     run state = pages visited, failed URLs, blocked selectors, dead ends, exhausted pages
     procedural = domain-keyed patterns from successful runs (patterns.json)
     episodic  = failure warnings from failed runs (failures.json)
-  termination = 8 conditions checked every step
+  recovery:
+    escalating = gentle nudge → forceful demand → forced consolidation
+    budget     = warnings at 75% and 90%, final-step done|fail only
+    consolidation = one last LLM call on exhaustion/failure with accumulated data
+    fallback   = optional secondary model on primary failure
+  termination = 8+ conditions checked every step
   output = done | partial_success | failed | needs_review
   checkpoint = live file updated every 5 steps
   pagination = auto-detected, bonus steps granted
-  watchdog = stall detection with nudge injection
-  budget = agent sees "Step X of Y (N remaining)"
+  batching = optional multi-action per step (experimental)
   token budget = min(24K, max(8K, context_window * 8%))
 ```

@@ -124,6 +124,8 @@ playwright_agent/
 ├── discover.py              # phase 1: navigate start URL, paginate, write samples.csv
 ├── worker.py                # phase 2: one BrowserContext per sample + agent_loop
 ├── agent_loop.py            # THE core: observe → decide → act → repeat
+├── memory.py                # Long-term memory: patterns + failures, LLM-distilled
+├── config.py                # Environment config (.env settings)
 │
 ├── core/
 │   ├── dom_extractor.py     # a11y pruner, dom_confidence, serializer
@@ -150,13 +152,17 @@ playwright_agent/
 │       ├── result.json      # extracted fields + artifact manifest
 │       └── action_log.json  # every step: thinking, action, outcome
 │
+├── memory/                  # long-term memory (auto-generated)
+│   ├── patterns.json        # navigation patterns from successful runs
+│   └── failures.json        # failure warnings
+│
 ├── samples.csv              # written by discover.py, consumed by main.py
 ├── combined.csv             # merged at end of run
 ├── .env                     # ANTHROPIC_API_KEY, credentials
 └── requirements.txt
 ```
 
-**9 Python files. That's the entire agent.** Everything site-specific lives in `tasks/*.json`.
+**10 Python files. That's the entire agent.** Everything site-specific lives in `tasks/*.json`.
 
 ---
 
@@ -213,7 +219,8 @@ main.py
   │                       ├── core/dom_extractor.py
   │                       ├── core/vision.py
   │                       ├── tools/browser.py
-  │                       └── tools/output.py
+  │                       ├── tools/output.py
+  │                       └── memory.py
   └── (merge CSV)
 ```
 
@@ -324,11 +331,12 @@ for step in range(task_spec.max_steps):         ← default 25, configurable
     2. DECIDE
        response = anthropic.messages.create(
            system   = task_spec.system_prompt       ← static, prompt-cached
-           messages = build_prompt(page_state, history[-5:], task_spec)
-           tools    = action_tool_schema()
+           messages = build_prompt(page_state, fitted_history, task_spec)  # 5-25 items, budget-fitted
+           tools    = action_tool_schema()           # 10 actions with reflection fields
            tool_choice = {"type": "any"}            ← forces structured output
        )
        action = AgentAction(**response.tool_input)
+       # Each action includes evaluation_previous_step, memory_update, next_goal
        history.append(action)
 
     3. ACT
@@ -371,7 +379,7 @@ USER (rebuilt every turn):
   [4] [button]   "Follow"
   [5] [text]     "231k followers · 0 following"
 
-  ## Actions taken so far (last 5)
+  ## Actions taken so far (recent budget-fitted window)
   Step 1: goto https://github.com/torvalds → success
   Step 2: screenshot "profile" → saved 01_profile.png
 
@@ -407,9 +415,13 @@ class AgentAction(BaseModel):
     extracted: dict | None = None   # done: the structured output matching output_schema
     note: str | None = None         # fail: reason string
     label: str | None = None        # screenshot: filename label (e.g. "profile", "checks")
+    # Structured reflection (per-step self-evaluation)
+    evaluation_previous_step: str | None = None  # "Did my last action work?"
+    memory_update: str | None = None             # "Key fact to remember"
+    next_goal: str | None = None                 # "What I'll do next"
 ```
 
-Claude always returns one of these via `tool_choice={"type":"any"}`. No free-form prose. If it can't proceed, it returns `fail` with a note — never hangs.
+Claude always returns one or more of these (multi-action batching when enabled) via `tool_choice={"type":"any"}`. No free-form prose. If it can't proceed, it returns `fail` with a note — never hangs.
 
 ### Judgment Mode
 
@@ -438,6 +450,18 @@ A `(url, action_name)` counter is maintained. At count >= 3:
 [NOTICE] You have taken the same action on this URL 3 times without progress.
 Try a different approach or call fail().
 ```
+
+### Escalating Stagnation Recovery
+
+Beyond simple loop counting, the agent tracks page signature stability (URL + DOM hash). Same page state with no new data triggers escalating responses:
+
+| Level | Trigger | Response |
+|-------|---------|----------|
+| 1 | 3 stagnant steps | Gentle nudge |
+| 2 | 5 stagnant steps | "CHANGE YOUR STRATEGY NOW" + checkpoint |
+| 3 | 8 stagnant steps | "MUST call done or fail" |
+
+Budget warnings at 75% and 90% of step budget. Final step restricts tools to `done`/`fail` only.
 
 ### Consecutive Failure Recovery
 
@@ -536,7 +560,7 @@ DOM provides structure + interactable elements (fast, cheap). Vision provides vi
 
 ## 11. Layer 7 — Action System
 
-9 actions. Pure functions. Always return `ActionResult`, never raise.
+10 actions. Pure functions. Always return `ActionResult`, never raise.
 
 | Action | Playwright Call | Error Policy |
 |--------|----------------|--------------|
@@ -547,6 +571,7 @@ DOM provides structure + interactable elements (fast, cheap). Vision provides vi
 | `wait` | `page.wait_for_selector(sel, timeout=10000)` | Timeout → ActionResult(success=False) |
 | `screenshot` | `page.screenshot(full_page=True)` | Always succeeds |
 | `extract` | `page.inner_text(selector)` | Not found → empty string + warning |
+| `save_progress` | Checkpoint data, continue loop | Always succeeds |
 | `done` | Write result + signal loop exit | Always succeeds |
 | `fail` | Write failure + signal loop exit | Always succeeds |
 

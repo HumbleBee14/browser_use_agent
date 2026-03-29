@@ -51,3 +51,5 @@ REFLECTION_MODE: str = os.getenv("REFLECTION_MODE", "full")  # "full" or "light"
 FINALIZE_ON_FAILURE: bool = os.getenv("FINALIZE_ON_FAILURE", "true").lower() == "true"
 ENABLE_FALLBACK_LLM: bool = os.getenv("ENABLE_FALLBACK_LLM", "false").lower() == "true"
 FALLBACK_LLM_MODEL: str = os.getenv("FALLBACK_LLM_MODEL", "claude-haiku-4-5")
+ENABLE_MULTI_ACTIONS: bool = os.getenv("ENABLE_MULTI_ACTIONS", "false").lower() == "true"
+MAX_ACTIONS_PER_STEP: int = int(os.getenv("MAX_ACTIONS_PER_STEP", "3"))

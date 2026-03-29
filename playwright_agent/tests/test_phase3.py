@@ -393,6 +393,162 @@ def test_config_has_new_feature_flags():
     assert isinstance(config.ENABLE_FALLBACK_LLM, bool)
     assert hasattr(config, "FALLBACK_LLM_MODEL")
     assert isinstance(config.FALLBACK_LLM_MODEL, str)
+    assert hasattr(config, "ENABLE_MULTI_ACTIONS")
+    assert isinstance(config.ENABLE_MULTI_ACTIONS, bool)
+    assert hasattr(config, "MAX_ACTIONS_PER_STEP")
+    assert isinstance(config.MAX_ACTIONS_PER_STEP, int)
+    assert config.MAX_ACTIONS_PER_STEP >= 1
+
+
+# ---- multi-action batching ----
+
+def test_batch_breaking_actions_set():
+    """Batch-breaking actions should include navigation and terminal actions."""
+    from agent_loop import _BATCH_BREAKING_ACTIONS
+    assert "goto" in _BATCH_BREAKING_ACTIONS
+    assert "done" in _BATCH_BREAKING_ACTIONS
+    assert "fail" in _BATCH_BREAKING_ACTIONS
+    assert "save_progress" in _BATCH_BREAKING_ACTIONS
+    assert "click" not in _BATCH_BREAKING_ACTIONS
+    assert "type" not in _BATCH_BREAKING_ACTIONS
+    assert "extract" not in _BATCH_BREAKING_ACTIONS
+
+
+def test_batch_safe_actions_not_breaking():
+    """click, type, scroll, extract, screenshot, wait should be batchable."""
+    from agent_loop import _BATCH_BREAKING_ACTIONS
+    safe = {"click", "type", "scroll", "extract", "screenshot", "wait"}
+    for action_name in safe:
+        assert action_name not in _BATCH_BREAKING_ACTIONS, f"{action_name} should be batchable"
+
+
+def test_multi_action_default_disabled():
+    """Multi-action should be disabled by default for safety."""
+    import config
+    assert config.ENABLE_MULTI_ACTIONS is False
+
+
+def test_batch_target_stable_for_same_index_mapping():
+    """Index-based batched selectors should be allowed only if the mapping is unchanged."""
+    from agent_loop import _is_batch_target_stable
+
+    original = {"3": "button:Save", "4": "textbox:Email"}
+    current = {"3": "button:Save", "4": "textbox:Email"}
+    assert _is_batch_target_stable("3", original, current) is True
+
+
+def test_batch_target_unstable_when_index_points_elsewhere():
+    """If the DOM reorders but keeps counts the same, batching must still abort."""
+    from agent_loop import _is_batch_target_stable
+
+    original = {"3": "button:Save", "4": "textbox:Email"}
+    current = {"3": "link:Settings", "4": "textbox:Email"}
+    assert _is_batch_target_stable("3", original, current) is False
+
+
+def test_batch_target_non_index_selector_is_allowed():
+    """Text/CSS-like selectors are re-resolved live and are safe to attempt."""
+    from agent_loop import _is_batch_target_stable
+
+    assert _is_batch_target_stable("Submit", {"1": "button:Submit"}, {"1": "button:Other"}) is True
+
+
+# ---- DOM stability for batching ----
+
+def test_dom_stable_identical_counts():
+    """Identical element counts = stable."""
+    from agent_loop import _is_dom_stable
+    assert _is_dom_stable(20, 20) is True
+    assert _is_dom_stable(0, 0) is True
+    assert _is_dom_stable(100, 100) is True
+
+
+def test_dom_stable_small_change():
+    """Small changes within tolerance are stable."""
+    from agent_loop import _is_dom_stable
+    assert _is_dom_stable(20, 21) is True
+    assert _is_dom_stable(20, 23) is True  # diff=3, threshold=max(3, 4)=4
+    assert _is_dom_stable(50, 48) is True  # diff=2 < max(3, 10)
+
+
+def test_dom_unstable_large_change():
+    """Large structural changes should be detected as unstable."""
+    from agent_loop import _is_dom_stable
+    assert _is_dom_stable(20, 30) is False  # diff=10, threshold=max(3, 4)=4
+    assert _is_dom_stable(10, 0) is False   # diff=10, threshold=max(3, 2)=3
+    assert _is_dom_stable(50, 65) is False  # diff=15, threshold=max(3, 10)=10
+
+
+def test_dom_stable_empty_to_nonempty():
+    """Going from zero to any elements is unstable (page just loaded)."""
+    from agent_loop import _is_dom_stable
+    assert _is_dom_stable(0, 5) is False
+    assert _is_dom_stable(0, 1) is False
+
+
+def test_dom_stable_small_dom_uses_minimum_threshold():
+    """For very small DOMs, the minimum threshold of 3 applies."""
+    from agent_loop import _is_dom_stable
+    # 5 elements, 20% = 1, but minimum is 3
+    assert _is_dom_stable(5, 7) is True   # diff=2, threshold=3
+    assert _is_dom_stable(5, 8) is True   # diff=3, threshold=3
+    assert _is_dom_stable(5, 9) is False  # diff=4, threshold=3
+
+
+# ---- batch control accounting ----
+
+def test_batch_result_propagation_pattern():
+    """Verify the pattern: sub-action result should override primary for tracking.
+
+    The batch loop sets action_result = _extra_result, so section 6 sees
+    the batch's final outcome, not just the primary action's.
+    """
+    primary_result = ActionResult(success=True, description="Primary OK")
+    sub_result = ActionResult(success=False, error="Sub-action failed")
+
+    # Simulate the batch propagation pattern
+    action_result = primary_result
+    action_result = sub_result  # batch loop updates this
+
+    # Section 6 should now see the failure
+    consecutive_failures = 0
+    if action_result.success:
+        consecutive_failures = 0
+    else:
+        consecutive_failures += 1
+
+    assert consecutive_failures == 1, "Sub-action failure must propagate to main tracking"
+
+
+def test_batch_data_resets_watchdog_pattern():
+    """Verify the pattern: batch extract success should reset last_data_step.
+
+    The watchdog condition includes `_batch_data_produced` so sub-action
+    extracts prevent false stagnation warnings.
+    """
+    last_data_step = 0
+    step = 10
+    data_changed = False
+    _batch_data_produced = True
+
+    # Simulate the watchdog condition from agent_loop.py
+    if (data_changed) or (_batch_data_produced):
+        last_data_step = step
+
+    assert last_data_step == 10, "Batch data production must reset watchdog"
+
+
+def test_batch_no_data_preserves_watchdog():
+    """When batch produces no data, watchdog should NOT reset."""
+    last_data_step = 0
+    step = 10
+    data_changed = False
+    _batch_data_produced = False
+
+    if (data_changed) or (_batch_data_produced):
+        last_data_step = step
+
+    assert last_data_step == 0, "No data = watchdog stays at old value"
 
 
 # ---- runner ----

@@ -47,7 +47,7 @@ User Input                          Output
 │    │ DOM     │   │ Claude  │   │Playwright│      │
 │    │ a11y    │   │ tool_use│   │ goto     │      │
 │    │ tree    │   │ returns │   │ click    │      │
-│    │ pruned  │   │ 1 of 9  │   │ type     │      │
+│    │ pruned  │   │ 1 of 10 │   │ type     │      │
 │    │ to ~80  │   │ actions │   │ screenshot│     │
 │    │ nodes   │   │         │   │ done/fail│      │
 │    └─────────┘   └─────────┘   └─────────┘      │
@@ -132,11 +132,16 @@ If `dom_confidence < 0.6` (canvas/SVG-heavy pages), vision activates — takes a
 **DECIDE** — Sends to Claude via Anthropic SDK:
 
 - `system`: task spec's system_prompt (static, prompt-cached across steps)
-- `messages`: one user message with page state + last 5 actions + goal + output schema
-- `tools`: 9 action definitions
+- `messages`: one user message with page state + budget-fitted history (5-25 items) + goal + output schema + reflection context
+- `tools`: 10 action definitions (each with optional reflection fields)
 - `tool_choice: {"type": "any"}` — forces structured output, never prose
 
-Claude returns exactly one tool call. Always.
+Claude returns one or more tool calls. Each includes optional structured reflection:
+- `evaluation_previous_step`: did the last action work?
+- `memory_update`: key fact to carry forward
+- `next_goal`: what the agent intends next
+
+When `ENABLE_MULTI_ACTIONS=true`, multiple actions can execute per LLM call (max 3 by default).
 
 **ACT** — Dispatches the action to Playwright:
 
@@ -151,8 +156,9 @@ Claude returns exactly one tool call. Always.
 | `wait(selector)`       | `wait_for_selector()`          | Text or CSS                                 |
 | `done(extracted)`      | Validates + writes result      | N/A                                         |
 | `fail(note)`           | Writes failure + exits         | N/A                                         |
+| `save_progress(extracted, note)` | Checkpoint data, continue | N/A, deep-merges with previous |
 
-Every action returns `ActionResult(success, description, error)` — never raises.
+Every action returns `ActionResult(success, description, error)` — never raises. Each dispatch is wrapped in a 60-second timeout to prevent hung workers.
 
 **CHECK** — When agent calls `done`:
 
@@ -162,11 +168,20 @@ Every action returns `ActionResult(success, description, error)` — never raise
 4. If missing + last step → write `needs_review`
 5. If all good → write `result.json` + `action_log.json`
 
-**SELF-CORRECTION:**
+**SELF-CORRECTION (Escalating Recovery):**
 
-- **Loop detection**: same `(url, action)` 3+ times → nudge message
-- **Spam detection**: same action type 3+ consecutive (screenshot, goto, scroll) → forced stop. Excludes `type`/`click` since form filling is legitimately repetitive.
+The agent has a multi-layered recovery system inspired by browser-use's decision hygiene:
+
+- **Structured reflection**: every action includes `evaluation_previous_step`, `memory_update`, and `next_goal` fields — explicit working memory instead of incidental text
+- **Stagnation detection**: page signature (URL + DOM hash) tracked across steps. Same page + no new data triggers escalation:
+  - **Level 1** (3 steps stagnant): gentle nudge — "try a different approach"
+  - **Level 2** (5 steps stagnant): forceful demand — "CHANGE YOUR STRATEGY NOW" + checkpoint saved
+  - **Level 3** (8 steps stagnant): forced consolidation — "MUST call done or fail"
+- **Budget pressure warnings**: one-time notices at 75% ("start consolidating") and 90% ("save/finalize NOW") of step budget
+- **Last-step tool restriction**: on the final step, only `done` and `fail` are available — no wasted actions
+- **Spam detection**: 4+ identical action types on the same URL → forced stop
 - **Failure recovery**: 3+ consecutive failures → inject list of visible interactive elements
+- **Final consolidation**: when max_steps exhausted or LLM fails with accumulated data, one last LLM call produces best-effort structured output
 
 ### 5. DOM Extractor (`core/dom_extractor.py`)
 
@@ -244,7 +259,7 @@ Concurrency-safe — all workers share one event loop, one lock.
 
 ## Long-Horizon Task Support
 
-Standard tasks (profile extraction, single-page audit) complete in 2-10 steps. Long-horizon tasks (multi-page audits, cross-link navigation chains) need 30-50+ steps. Four mechanisms make this work:
+Standard tasks (profile extraction, single-page audit) complete in 2-10 steps. Long-horizon tasks (multi-page audits, cross-link navigation chains) need 30-50+ steps. Multiple mechanisms make this work:
 
 ### 1. `save_progress` Action
 
@@ -296,11 +311,14 @@ Saved progress with PR #1 data and navigated back to the list.
 ```
 
 The agent always sees in its prompt:
-- **Last 5 raw actions** (recent context)
-- **LLM-generated summaries** of earlier work (long-term memory, not raw steps)
+- **Structured LLM summaries** of earlier work (FOUND/GAPS/NEXT format)
+- **Dynamic budget-fitted recent actions** (5-25 items, importance-scored)
 - **Full accumulated data** from save_progress (what was collected)
+- **Structured run state** (failed URLs, blocked selectors, dead ends, exhausted pages)
 - **Step budget** ("Step 16 of 40 — 24 remaining")
-- **Extracted text buffer** — all `extract` action results are also accumulated
+- **Budget warnings** at 75% and 90% thresholds
+- **Memory hints** from successful past runs on the same domain (first 3 steps only)
+- **Reflection context** from recent actions (memory updates, goals)
 
 Uses the fast/cheap model so summary calls cost < $0.001 each.
 
@@ -315,17 +333,20 @@ Step 25 | click("Load more")  → OK → Pagination detected → +3 bonus (effec
 
 Detection is keyword-based: `next`, `next page`, `load more`, `show more`, `older`, `newer`, `»`, `›`, etc.
 
-### 5. Watchdog (Stall Detection)
+### 5. Watchdog + Escalating Stagnation Detection
 
-If the agent hasn't produced new data (no `save_progress` with genuinely new data, or successful `extract`) for 5 consecutive steps, the watchdog injects a warning:
+Replaces the original flat watchdog with a 3-level escalating system using page signature hashing:
 
-```
-WARNING: You have not produced new data in 5 steps. You have 12 steps left.
-Either extract/save_progress with data, or call done with what you have,
-or call fail if the task cannot be completed.
-```
+- **Page signature** = MD5 of (normalized URL + first 2K of DOM text)
+- Same signature + no new data → stagnation counter increments
 
-This prevents the agent from burning steps on aimless navigation. If accumulated data exists, a checkpoint is also written so nothing is lost if the agent stalls out.
+| Level | Trigger | Response |
+|-------|---------|----------|
+| 1 (gentle) | 3 stagnant steps | "Try a different approach, scroll, or extract" |
+| 2 (forceful) | 5 stagnant steps | "CHANGE YOUR STRATEGY NOW" + checkpoint saved |
+| 3 (critical) | 8 stagnant steps | "MUST call done or fail. No more browsing." |
+
+The watchdog resets when genuinely new data arrives (successful `extract` or `save_progress` with new data).
 
 ### 6. Batch Chunking (Large-Scale Tasks)
 
@@ -351,6 +372,11 @@ The agent doesn't just stop at `max_steps`. Multiple termination conditions are 
 | `max_steps` exhausted | `failed` | Hard ceiling (accumulated data saved) |
 | LLM API error | `failed` | Claude unreachable |
 | Agent calls `fail(reason)` | `failed` | Agent gives up intentionally |
+| Budget 75% reached | warning injected | "Start consolidating results" |
+| Budget 90% reached | warning injected | "Save/finalize NOW" |
+| Final step | tools restricted | Only `done` and `fail` available |
+| LLM API error (with data) | `partial_success` | Final consolidation attempted first |
+| `max_steps` exhausted (with data) | `partial_success` | Final consolidation attempted first |
 
 **Infrastructure error detection** classifies errors as infra (timeout, DNS, connection refused, page crashed, SSL) vs logic (element not found, click failed). Only infra errors count toward the circuit breaker — a click failing because the wrong selector was used does NOT trigger early termination.
 
@@ -376,6 +402,42 @@ If the agent hits any termination condition, accumulated data is **not lost**:
 - `result.json` includes accumulated data (with appropriate status)
 - `action_log.json` has the full step trace up to the termination point
 
+### 9. Long-Term Memory (`memory.py`)
+
+Cross-run learning. The agent remembers what worked and what failed on each domain.
+
+| Type | File | Learned from | Contains |
+|------|------|-------------|----------|
+| Procedural patterns | `memory/patterns.json` | Successful `done` runs | Action sequences, navigation tips, things to avoid |
+| Episodic warnings | `memory/failures.json` | `failed` / `partial_success` runs | Dead URLs, broken selectors, failure reasons |
+
+**How it works:**
+- After a successful run, Claude Haiku distills the full action log into abstract navigation patterns
+- Patterns are domain-keyed and task-aware — `get_hints()` ranks by keyword overlap with the current goal
+- Failure warnings are stored from any non-`done` termination
+- Hints are injected into the prompt for the first 3 steps of future runs on the same domain
+
+### 10. Multi-Action Batching (Experimental)
+
+When `ENABLE_MULTI_ACTIONS=true`, the LLM can return multiple actions per step:
+
+- **Max 3 actions per step** (configurable via `MAX_ACTIONS_PER_STEP`)
+- **Batch-breaking actions**: `goto`, `done`, `fail`, `save_progress` abort remaining batch
+- **URL change aborts batch**: if a click causes navigation, remaining actions are stale
+- **DOM stability check**: if interactive element count shifts >20%, batch aborts (prevents stale index targeting)
+- **Per-sub-action logging**: every sub-action gets its own `StepRecord` in `action_log.json`
+- **Fresh DOM per sub-action**: element map refreshed before each dispatch
+
+Best for: form fills (`type` + `type` + `click`), repetitive extraction. Off by default.
+
+### 11. Fallback LLM
+
+When `ENABLE_FALLBACK_LLM=true` and the primary model fails with retryable errors:
+- Primary model retried 3x with exponential backoff
+- One attempt on `FALLBACK_LLM_MODEL` (default: Claude Haiku)
+- Final consolidation also prefers fallback when primary just failed
+- Model switch is explicitly logged — no silent swaps
+
 ### Test Cases
 
 **PR Audit Chain** — the showcase for long-horizon:
@@ -394,9 +456,10 @@ Agent visits contributors page → clicks each profile → extracts details → 
 
 ## What Makes It System-Agnostic
 
-Zero site-specific code in any Python file. The agent reads the live DOM and reasons about it. All site knowledge lives in:
+Zero site-specific code in any Python file. The agent reads the live DOM and reasons about it. All site-specific knowledge lives in:
 
 - `tasks/*.json` — goal, keywords, output schema, system prompt
-- `.env` — credentials
+- `.env` — credentials and agent behavior tuning (reflection mode, fallback LLM, multi-action batching)
+- `memory/` — learned navigation patterns (auto-generated, domain-keyed)
 
 To add a new site: write one JSON file. No code changes.

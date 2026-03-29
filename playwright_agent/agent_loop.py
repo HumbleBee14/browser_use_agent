@@ -78,6 +78,9 @@ from models.actions import (
 # Terminal-only tool schema (done + fail) for last-step forced consolidation
 _TERMINAL_TOOLS: list[dict] | None = None
 
+# Actions that break a multi-action batch — navigation, terminal, or checkpoint
+_BATCH_BREAKING_ACTIONS = frozenset({"goto", "done", "fail", "save_progress"})
+
 
 def _get_terminal_tools() -> list[dict]:
     """Return tool schema restricted to done + fail only."""
@@ -395,16 +398,23 @@ async def run(
         if response is None:
             continue
 
-        # Extract the tool call from response
-        tool_block = next(
-            (b for b in response.content if b.type == "tool_use"), None
-        )
-        if not tool_block:
+        # Extract tool call(s) from response
+        all_tool_blocks = [b for b in response.content if b.type == "tool_use"]
+        if not all_tool_blocks:
             output_mgr.log_step(StepRecord(
                 step=step, action="no_tool_call", result="LLM returned no tool call", url=page.url,
             ))
             consecutive_failures += 1
             continue
+
+        tool_block = all_tool_blocks[0]
+        _remaining_batch = (
+            all_tool_blocks[1:config.MAX_ACTIONS_PER_STEP]
+            if config.ENABLE_MULTI_ACTIONS and len(all_tool_blocks) > 1
+            else []
+        )
+        if _remaining_batch:
+            log.info(f"Step {step} | Multi-action batch: {len(all_tool_blocks)} actions ({len(_remaining_batch)} queued)")
 
         # Log Claude's raw response (DEBUG only)
         log.debug(
@@ -490,14 +500,6 @@ async def run(
             if _selector_fail_counts[sel] >= 2 and sel not in progress["blocked_selectors"]:
                 progress["blocked_selectors"].append(sel)
                 log.info(f"Step {step} | Selector blocked (failed {_selector_fail_counts[sel]}x): {sel}")
-
-        # Track dead ends — repeated action on same URL with no data produced
-        url_action_key = (page.url[:80], action.action)
-        if loop_counter.get(url_action_key, 0) >= 3:
-            dead = f"{action.action} on {page.url[:60]}"
-            if dead not in progress["dead_ends"]:
-                progress["dead_ends"].append(dead)
-                log.info(f"Step {step} | Dead end detected: {dead}")
 
         # ---- NETWORK ERROR TRACKING ----
         if not action_result.success and _is_infra_error(action_result.error or ""):
@@ -764,25 +766,149 @@ async def run(
                     pass
             return
 
+        # ---- 5b. MULTI-ACTION BATCH (remaining sub-actions from same LLM call) ----
+        _batch_ran = False
+        _batch_data_produced = False
+        _tracked_action_name = action.action
+        _tracked_action_selector = action.selector or action.url or action.label or action.direction or ""
+        if _remaining_batch and action.action not in _BATCH_BREAKING_ACTIONS and action_result.success:
+            _batch_origin_url = page.url
+            _batch_origin_map = dict(snap.element_map)
+            _batch_element_count = len(snap.element_map) if hasattr(snap, "element_map") else len(snap.nodes)
+            _batch_ran = True
+
+            for _extra_block in _remaining_batch:
+                if page.url != _batch_origin_url:
+                    log.info(f"Step {step} batch | Aborted: URL changed to {page.url[:80]}")
+                    break
+
+                try:
+                    _extra = AgentAction(action=_extra_block.name, **_extra_block.input)
+                except Exception:
+                    break
+
+                if _extra.action in _BATCH_BREAKING_ACTIONS:
+                    log.debug(f"Step {step} batch | Skipped batch-breaking '{_extra.action}'")
+                    break
+
+                # Refresh DOM for accurate element map
+                try:
+                    snap = await dom_extractor.snapshot(page, task_spec.keywords)
+                except Exception:
+                    break
+
+                # Abort if the indexed target no longer maps to the same element.
+                if not _is_batch_target_stable(_extra.selector or "", _batch_origin_map, snap.element_map):
+                    log.info(
+                        f"Step {step} batch | Aborted: selector '{_extra.selector}' no longer maps "
+                        f"to the original target after DOM update"
+                    )
+                    break
+
+                # DOM stability check: abort if interactive elements shifted significantly
+                _new_element_count = len(snap.element_map) if hasattr(snap, "element_map") else len(snap.nodes)
+                if not _is_dom_stable(_batch_element_count, _new_element_count):
+                    log.info(
+                        f"Step {step} batch | Aborted: DOM structure changed "
+                        f"({_batch_element_count} → {_new_element_count} elements)"
+                    )
+                    break
+                _batch_element_count = _new_element_count
+
+                try:
+                    _extra_result = await asyncio.wait_for(
+                        _dispatch(_extra, page, snap, output_mgr, seen_screenshot_hashes),
+                        timeout=ACTION_TIMEOUT,
+                    )
+                except asyncio.TimeoutError:
+                    _extra_result = ActionResult(success=False, error=f"Timed out after {ACTION_TIMEOUT}s")
+
+                _extra_desc = (_extra_result.description if _extra_result.success else _extra_result.error) or ""
+                log.info(
+                    f"Step {step} batch | {_extra.action}({(_extra.selector or _extra.url or _extra.label or '')[:40]}) "
+                    f"→ {'OK' if _extra_result.success else 'FAIL'}: {_extra_desc[:80]}"
+                )
+
+                _e_eval = (_extra.evaluation_previous_step or "")[:160]
+                _e_mem = (_extra.memory_update or "")[:160]
+                _e_goal = (_extra.next_goal or "")[:160]
+
+                output_mgr.log_step(StepRecord(
+                    step=step, action=_extra.action,
+                    params=_extra.model_dump(exclude_none=True, exclude={
+                        "action", "evaluation_previous_step", "memory_update", "next_goal",
+                    }),
+                    result=_extra_desc, url=page.url,
+                    evaluation=_e_eval, memory_update=_e_mem, next_goal=_e_goal,
+                ))
+
+                _e_entry: dict = {
+                    "step": step, "action": _extra.action,
+                    "params": {k: v for k, v in _extra.model_dump(exclude_none=True).items()
+                               if k not in ("action", "evaluation_previous_step", "memory_update", "next_goal")},
+                    "result": _extra_result.description if _extra_result.success else _extra_result.error,
+                }
+                if _e_mem:
+                    _e_entry["memory"] = _e_mem
+                history.append(_e_entry)
+
+                if _extra.action == "screenshot" and _extra_result.success:
+                    progress["artifacts"].append(_extra.label or "screenshot")
+                if _extra_result.extracted_text:
+                    progress["fields_found"].append(_extra_result.extracted_text[:50])
+                if _extra.action == "extract" and _extra_result.success and _extra_result.extracted_text:
+                    _batch_data_produced = True
+                    if "extracted_texts" not in accumulated:
+                        accumulated["extracted_texts"] = []
+                    accumulated["extracted_texts"].append({
+                        "step": step, "selector": _extra.selector or "",
+                        "text": _extra_result.extracted_text[:500],
+                    })
+
+                # Propagate sub-action result to main loop's tracking
+                action_result = _extra_result
+                _tracked_action_name = _extra.action
+                _tracked_action_selector = _extra.selector or _extra.url or _extra.label or _extra.direction or ""
+                if not _extra_result.success:
+                    break
+
+            # Refresh page_state after the last executed sub-action so downstream
+            # pagination, loop detection, and stagnation logic see the current page.
+            try:
+                snap = await dom_extractor.snapshot(page, task_spec.keywords)
+                page_state = dom_extractor.serialize(snap)
+            except Exception as e:
+                log.debug(f"Step {step} batch | Final DOM refresh failed: {str(e)[:100]}")
+
         # ---- 6. LOOP, STAGNATION & FAILURE TRACKING ----
-        loop_key = (page.url, action.action)
+        loop_key = (page.url, _tracked_action_name)
         loop_counter[loop_key] = loop_counter.get(loop_key, 0) + 1
 
+        # Track dead ends using the final executed action for this step.
+        if loop_counter.get((page.url, _tracked_action_name), 0) >= 3:
+            dead = f"{_tracked_action_name} on {page.url[:60]}"
+            if dead not in progress["dead_ends"]:
+                progress["dead_ends"].append(dead)
+                log.info(f"Step {step} | Dead end detected: {dead}")
+
+        # Use the FINAL action_result (primary or last sub-action) for tracking
         if action_result.success:
             consecutive_failures = 0
         else:
             consecutive_failures += 1
 
         # ---- AUTO-PAGINATION: detect "next page" clicks and grant bonus steps ----
-        if (action.action == "click" and action_result.success
-                and _is_pagination_click(action.selector or "", action_result.description)):
+        if (_tracked_action_name == "click" and action_result.success
+                and _is_pagination_click(_tracked_action_selector, action_result.description)):
             pagination_bonus += 3
             effective_max = task_spec.max_steps + pagination_bonus
             log.info(f"Step {step} | Pagination detected → +3 bonus steps (effective_max={effective_max})")
 
         # ---- WATCHDOG + STAGNATION: unified escalating detection ----
+        # Reset watchdog if primary or ANY batched sub-action produced data
         if (action.action == "save_progress" and data_changed) \
-                or (action.action == "extract" and action_result.success):
+                or (action.action == "extract" and action_result.success) \
+                or _batch_data_produced:
             last_data_step = step
 
         # Page signature = hash of (normalized URL + first 2K of DOM text)
@@ -1127,6 +1253,38 @@ async def _attempt_final_consolidation(
         except Exception:
             continue
     return None
+
+
+def _is_dom_stable(before_count: int, after_count: int, tolerance: float = 0.20) -> bool:
+    """Check if the DOM structure is stable enough for batched actions.
+
+    Compares interactive element counts before and after a sub-action.
+    A significant change (>20% or >3 elements for small DOMs) means the page
+    re-rendered and remaining planned actions target stale indices.
+    """
+    if before_count == 0:
+        return after_count == 0
+    diff = abs(after_count - before_count)
+    threshold = max(3, int(before_count * tolerance))
+    return diff <= threshold
+
+
+def _is_batch_target_stable(
+    selector: str,
+    original_map: dict[str, str],
+    current_map: dict[str, str],
+) -> bool:
+    """Return True when a batched selector still maps to the same target.
+
+    Only index-based selectors are vulnerable to stale remapping. Text/CSS selectors
+    are re-resolved by Playwright at execution time, so they are allowed through.
+    """
+    if not selector or not selector.isdigit():
+        return True
+
+    original_target = original_map.get(selector)
+    current_target = current_map.get(selector)
+    return bool(original_target) and original_target == current_target
 
 
 INFRA_ERROR_PATTERNS = [

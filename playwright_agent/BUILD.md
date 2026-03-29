@@ -31,9 +31,17 @@ cp .env.example .env
 |----------|----------|---------|-------------|
 | `ANTHROPIC_API_KEY` | Yes | — | Your Anthropic API key |
 | `LLM_MODEL` | No | `claude-sonnet-4-6` | Primary LLM model |
+| `LLM_FAST_MODEL` | No | `claude-haiku-4-5` | Fast model for summaries & memory distillation |
+| `LLM_CONTEXT_WINDOW` | No | auto-detected | Override context window (tokens) |
 | `MAX_CONCURRENT` | No | `5` | Max parallel browser contexts |
 | `HEADLESS` | No | `false` | Set `true` for CI/server |
 | `AUTH_STORAGE_STATE` | No | — | Path to Playwright auth state JSON |
+| `REFLECTION_MODE` | No | `full` | `full` (structured reflection) or `light` (minimal, saves tokens) |
+| `FINALIZE_ON_FAILURE` | No | `true` | Best-effort consolidation call on exhaustion/failure |
+| `ENABLE_FALLBACK_LLM` | No | `false` | Try fallback model on retryable primary failures |
+| `FALLBACK_LLM_MODEL` | No | `claude-haiku-4-5` | Which model to fall back to |
+| `ENABLE_MULTI_ACTIONS` | No | `false` | Experimental: multiple actions per LLM call |
+| `MAX_ACTIONS_PER_STEP` | No | `3` | Max sub-actions per batch (when multi-actions enabled) |
 
 ## Project Structure
 
@@ -42,34 +50,49 @@ playwright_agent/
 ├── main.py              # Orchestrator: discovery → execution → CSV merge
 ├── discover.py          # Phase 1: paginate → samples.csv
 ├── worker.py            # Phase 2: one BrowserContext per sample
-├── agent_loop.py        # THE core: observe → decide → act → repeat
-├── config.py            # Environment config
+├── agent_loop.py        # THE core: observe → reflect → decide → act → repeat
+├── config.py            # Environment config (all .env settings)
+├── memory.py            # Long-term memory: patterns + failures, LLM-distilled
+├── task_planner.py      # Natural language → structured task spec
+├── log_setup.py         # Structured logging (loguru, dual human + JSONL)
 │
 ├── core/
 │   ├── dom_extractor.py # A11y tree → pruned text for LLM
 │   └── vision.py        # Screenshot → Claude multimodal
 │
 ├── tools/
-│   ├── browser.py       # Thin Playwright wrappers
-│   └── output.py        # File I/O, SHA-256, evidence packaging
+│   ├── browser.py       # Thin Playwright wrappers + rate limiting
+│   └── output.py        # File I/O, SHA-256, evidence packaging, checkpointing
 │
 ├── models/
 │   ├── task.py          # TaskSpec + SampleInput (Pydantic)
-│   └── actions.py       # AgentAction + ActionResult + tool schema
+│   └── actions.py       # AgentAction (with reflection) + ActionResult + tool schema
 │
 ├── tasks/               # Task specs (JSON) — all site-specific config
 │   └── _template.json
 │
+├── memory/              # Long-term memory (auto-generated at runtime)
+│   ├── patterns.json    # Learned navigation patterns from successful runs
+│   └── failures.json    # Failure warnings from failed/partial runs
+│
 ├── logs/                # Structured logs — one pair per run
-│   ├── run_2026-03-27_140000.log
-│   └── run_2026-03-27_140000.jsonl
+│   ├── run_YYYY-MM-DD_HHMMSS.log
+│   └── run_YYYY-MM-DD_HHMMSS.jsonl
+│
+├── tests/               # Regression tests (101 tests)
+│   ├── test_phase1.py   # Tools + models
+│   ├── test_phase2.py   # DOM extractor + vision
+│   ├── test_phase3.py   # Agent loop + reflection + recovery + batching
+│   ├── test_phase4.py   # Orchestrator + discovery
+│   └── test_memory.py   # Memory system
 │
 └── evidence/            # Output — generated at runtime
-    └── run_2026-03-27_140000/
+    └── run_YYYY-MM-DD_HHMMSS/
         └── {sample_id}/
             ├── 01_{label}.png
             ├── result.json
-            └── action_log.json
+            ├── action_log.json
+            └── checkpoint.json
 ```
 
 ## Running Tests
