@@ -377,8 +377,9 @@ write_result(status="failed", reason="max_steps_exceeded")
 ### What Claude Sees Each Turn
 
 ```
-SYSTEM (static — prompt cached across all steps):
-  {task_spec.system_prompt}
+SYSTEM (split into cached static + uncached dynamic):
+  Block 1 [CACHED — ephemeral TTL]: {task_spec.system_prompt}  ← identical across all steps, cache hit every time
+  Block 2 [NOT CACHED]:             {memory_hints, sample.extra}  ← changes per sample, doesn't invalidate Block 1
 
 USER (rebuilt every turn):
   ## Current page state
@@ -404,6 +405,29 @@ USER (rebuilt every turn):
 
   Take the single best next action.
 ```
+
+### Context Efficiency — Three-Layer Optimization
+
+**Layer 1: Microcompact (zero cost, runs every step)**
+Stale history entries (older than last 5 steps) are compacted to short stubs:
+- `Step 3: screenshot → [01_commit_page.png]` instead of full SHA-256 description
+- `Step 5: extract → [1432 chars saved]` instead of full extraction text
+- Meta messages (nudges, recovery prompts) older than 5 steps are dropped entirely — they served their purpose
+
+**Layer 2: Prompt Cache Split (saves ~30-50% input tokens)**
+System prompt is split into two blocks:
+- Block 1: Static task instructions → `cache_control: {type: "ephemeral"}` → cached across all steps
+- Block 2: Dynamic context (memory hints, sample metadata) → NOT cached → changes don't invalidate Block 1
+
+On a 10-step run, Block 1 is sent once and cached for steps 2-10. That's 9 cache hits on the largest part of the prompt.
+
+**Layer 3: Budget-Fitted History (intelligent selection)**
+History is not a simple sliding window. `agent_prompt.fit_history()` scores each entry by:
+- Action importance (`save_progress`/`done` = 3, `extract` = 2, `scroll` = 0)
+- Recency bonus (newer entries score higher)
+- Token cost (expensive entries deprioritized when budget is tight)
+
+Result: 5-25 history items fitted to a token budget (30% of prompt capacity), keeping the most informative steps.
 
 ### Action Schema — 12 Typed Actions
 

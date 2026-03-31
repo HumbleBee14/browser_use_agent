@@ -262,7 +262,7 @@ async def run(
             remaining_steps = effective_max - step
             history.append({
                 "step": step,
-                "action": "system_notice",
+                "action": "system_notice", "is_meta": True,
                 "result": (
                     f"BUDGET WARNING: You have used {step}/{effective_max} steps ({int(budget_ratio*100)}%). "
                     f"{remaining_steps} steps remaining. Start consolidating results — "
@@ -275,7 +275,7 @@ async def run(
             remaining_steps = effective_max - step
             history.append({
                 "step": step,
-                "action": "system_notice",
+                "action": "system_notice", "is_meta": True,
                 "result": (
                     f"URGENT: {remaining_steps} steps left. Save any unsaved data NOW with save_progress, "
                     f"then call done immediately with your best available results. "
@@ -290,7 +290,7 @@ async def run(
             step_tools = _get_terminal_tools()
             history.append({
                 "step": step,
-                "action": "system_notice",
+                "action": "system_notice", "is_meta": True,
                 "result": (
                     "FINAL STEP. Your ONLY available actions are done and fail. "
                     "Call done with all collected data, or fail with a precise reason. "
@@ -338,18 +338,45 @@ async def run(
         response = None
         for attempt in range(1, LLM_MAX_RETRIES + 1):
             try:
+                # Prompt cache split: static system prompt is cached across all steps
+                # (never changes per run). Dynamic context (memory, sample) is appended
+                # as a separate block — changes don't invalidate the cache on the static prefix.
+                system_blocks = [{
+                    "type": "text",
+                    "text": task_spec.system_prompt,
+                    "cache_control": {"type": "ephemeral"},
+                }]
+                # Dynamic context — NOT cached (changes per step or per sample)
+                dynamic_parts = []
+                if memory_hints and step <= 3:
+                    dynamic_parts.append(f"Domain hints from previous samples:\n{memory_hints}")
+                if sample.extra:
+                    dynamic_parts.append(f"Sample context: {json.dumps(sample.extra)}")
+                if dynamic_parts:
+                    system_blocks.append({
+                        "type": "text",
+                        "text": "\n".join(dynamic_parts),
+                    })
+
                 response = await client.messages.create(
                     model=config.LLM_MODEL,
                     max_tokens=1024,
-                    system=[{
-                        "type": "text",
-                        "text": task_spec.system_prompt,
-                        "cache_control": {"type": "ephemeral"},
-                    }],
+                    system=system_blocks,
                     messages=messages,
                     tools=step_tools,
                     tool_choice={"type": "any"},
                 )
+                # Log cache hit/miss for prompt cache verification
+                usage = getattr(response, "usage", None)
+                if usage:
+                    cache_read = getattr(usage, "cache_read_input_tokens", 0) or 0
+                    cache_create = getattr(usage, "cache_creation_input_tokens", 0) or 0
+                    input_tokens = getattr(usage, "input_tokens", 0) or 0
+                    output_tokens = getattr(usage, "output_tokens", 0) or 0
+                    log.debug(
+                        f"Step {step} tokens | input={input_tokens} output={output_tokens} "
+                        f"cache_read={cache_read} cache_create={cache_create}"
+                    )
                 break
             except Exception as e:
                 log.warning(f"Step {step} | LLM attempt {attempt}/{LLM_MAX_RETRIES} failed: {str(e)[:150]}")
@@ -364,11 +391,7 @@ async def run(
                             response = await client.messages.create(
                                 model=config.FALLBACK_LLM_MODEL,
                                 max_tokens=1024,
-                                system=[{
-                                    "type": "text",
-                                    "text": task_spec.system_prompt,
-                                    "cache_control": {"type": "ephemeral"},
-                                }],
+                                system=system_blocks,
                                 messages=messages,
                                 tools=step_tools,
                                 tool_choice={"type": "any"},
@@ -585,7 +608,7 @@ async def run(
                 log.info(f"Step {step} | Expected items reached ({items_collected}/{task_spec.expected_items})")
                 history.append({
                     "step": step,
-                    "action": "system_notice",
+                    "action": "system_notice", "is_meta": True,
                     "result": (
                         f"You have collected {items_collected} of {task_spec.expected_items} expected items. "
                         f"All items collected. Call done now with the complete data."
@@ -594,7 +617,7 @@ async def run(
             elif not data_changed:
                 history.append({
                     "step": step,
-                    "action": "system_notice",
+                    "action": "system_notice", "is_meta": True,
                     "result": (
                         f"No new data added (duplicate of previously saved data). "
                         f"Stop calling save_progress and take a real action: "
@@ -607,7 +630,7 @@ async def run(
                     remaining_items = f" ({items_collected}/{task_spec.expected_items} items)"
                 history.append({
                     "step": step,
-                    "action": "system_notice",
+                    "action": "system_notice", "is_meta": True,
                     "result": f"Progress saved{remaining_items}. You have {effective_max - step} steps remaining. Keep going.",
                 })
             consecutive_failures = 0
@@ -699,7 +722,7 @@ async def run(
                     # Bounce back — force agent to try again
                     history.append({
                         "step": step,
-                        "action": "system_notice",
+                        "action": "system_notice", "is_meta": True,
                         "result": ". ".join(notice_parts) + ". Try again.",
                     })
                     consecutive_failures += 1
@@ -965,7 +988,7 @@ async def run(
                 output_mgr.write_checkpoint(
                     step, accumulated, progress_notes, max_steps=effective_max, status="stagnation"
                 )
-            history.append({"step": step, "action": "system_notice", "result": message})
+            history.append({"step": step, "action": "system_notice", "is_meta": True, "result": message})
             if level >= 1:
                 last_data_step = step  # reset to avoid consecutive escalation spam
 

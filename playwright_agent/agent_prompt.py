@@ -44,21 +44,34 @@ def estimate_tokens(text: str) -> int:
 
 
 def fit_history(full_history: list[dict], fixed_tokens: int) -> list[dict]:
-    """Select history items that fit within the token budget."""
+    """Select history items that fit within the token budget.
+
+    Meta messages (nudges, recovery prompts) are excluded BEFORE selection —
+    they served their purpose at the time and should not consume budget or
+    displace real navigation/evidence context in long-horizon runs.
+    """
     remaining_capacity = max(0, PROMPT_TOKEN_BUDGET - fixed_tokens)
     budget = max(500, int(remaining_capacity * HISTORY_TOKEN_SHARE))
 
     if not full_history:
         return []
 
-    recency_window = full_history[-MIN_HISTORY_ITEMS:]
+    # Strip stale meta messages before any selection — they waste budget
+    real_history = [h for h in full_history if not h.get("is_meta", False)]
+    # But keep recent meta (last 3 steps) — they're still relevant context
+    recent_meta = [
+        h for h in full_history[-3:]
+        if h.get("is_meta", False)
+    ]
+
+    recency_window = real_history[-MIN_HISTORY_ITEMS:] + recent_meta
     recency_tokens = sum(estimate_tokens(json.dumps(h, default=str)) for h in recency_window)
 
     remaining_budget = budget - recency_tokens
-    if remaining_budget <= 0 or len(full_history) <= MIN_HISTORY_ITEMS:
+    if remaining_budget <= 0 or len(real_history) <= MIN_HISTORY_ITEMS:
         return recency_window
 
-    older = full_history[:-MIN_HISTORY_ITEMS]
+    older = real_history[:-MIN_HISTORY_ITEMS]
     scored = []
     for i, item in enumerate(older):
         action = item.get("action", "")
@@ -91,9 +104,13 @@ async def summarize_steps(
     log,
 ) -> str:
     """Structured FOUND/GAPS/NEXT summary via fast model, with mechanical fallback."""
+    # Exclude meta messages from summaries — they're internal loop mechanics, not evidence
+    real_steps = [h for h in steps if not h.get("is_meta", False)]
+    if not real_steps:
+        return ""
     step_text = "\n".join(
         f"Step {h['step']}: {h['action']}({json.dumps(h.get('params', {}), default=str)[:80]}) → {h.get('result', '')[:80]}"
-        for h in steps
+        for h in real_steps
     )
     try:
         response = await client.messages.create(
@@ -159,9 +176,12 @@ def build_messages(
     if progress and any(progress.values()):
         progress_lines = []
         if progress.get("pages_visited"):
-            progress_lines.append(f"Pages visited: {', '.join(progress['pages_visited'][-10:])}")
+            # Cap at last 10 — older pages are in summaries already
+            progress_lines.append(f"Pages visited ({len(progress['pages_visited'])}): {', '.join(progress['pages_visited'][-10:])}")
         if progress.get("artifacts"):
-            progress_lines.append(f"Screenshots taken: {', '.join(progress['artifacts'])}")
+            # Cap at last 10 — just show recent + total count
+            arts = progress['artifacts']
+            progress_lines.append(f"Screenshots ({len(arts)}): {', '.join(arts[-10:])}")
         if progress.get("fields_found"):
             progress_lines.append(f"Data extracted so far: {', '.join(progress['fields_found'][-5:])}")
         if progress.get("failed_urls"):
@@ -178,15 +198,42 @@ def build_messages(
     if history:
         history_lines = []
         show_reflection = config.REFLECTION_MODE == "full"
-        for h in history:
-            line = f"Step {h['step']}: {h['action']} → {h.get('result', '')[:100]}"
-            if show_reflection:
+        # Microcompact: stale results (older than last 5) get truncated to stubs.
+        # Recent results stay full — the agent needs them for decision-making.
+        # This saves ~100 tokens per old step without losing the action trace.
+        recency_boundary = max(0, len(history) - 5)
+        for i, h in enumerate(history):
+            is_stale = i < recency_boundary
+            is_meta = h.get("is_meta", False)
+
+            # Skip meta messages (nudges, recovery prompts) — they served their purpose
+            if is_meta and is_stale:
+                continue
+
+            if is_stale:
+                # Compact stale results to short stubs
+                action = h.get("action", "")
+                if action == "screenshot":
+                    # Extract just the filename from the full result
+                    result = h.get("result", "")
+                    fname = result.split(": ")[1].split(" ")[0] if ": " in result else "screenshot"
+                    line = f"Step {h['step']}: screenshot → [{fname}]"
+                elif action == "extract":
+                    chars = h.get("result", "").split(" ")[1] if "Extracted" in h.get("result", "") else "?"
+                    line = f"Step {h['step']}: extract → [{chars} chars saved]"
+                else:
+                    line = f"Step {h['step']}: {action} → {h.get('result', '')[:50]}"
+            else:
+                # Recent results stay full
+                line = f"Step {h['step']}: {h['action']} → {h.get('result', '')[:100]}"
+
+            if show_reflection and not is_stale:
                 if h.get("memory"):
                     line += f" [mem: {h['memory'][:60]}]"
                 if h.get("goal"):
                     line += f" [goal: {h['goal'][:60]}]"
             history_lines.append(line)
-        parts.append(f"\n## Action history ({len(history)} items, budget-fitted)\n" + "\n".join(history_lines))
+        parts.append(f"\n## Action history ({len(history_lines)} items)\n" + "\n".join(history_lines))
 
     if consecutive_failures >= 3:
         interactive = [
@@ -201,15 +248,15 @@ def build_messages(
                 + "\n".join(interactive[:15])
             )
 
+    # Sample ID and URL in user message. Extra fields are in the system prompt
+    # (dynamic block) to avoid duplication — saves tokens on every step.
     sample_info = f"SAMPLE: ID={sample.sample_id}"
     if sample.url:
         sample_info += f", URL={sample.url}"
-    if sample.extra:
-        sample_info += f", Extra={json.dumps(sample.extra)}"
     parts.append(f"\n## Sample\n{sample_info}")
 
-    if memory_hints and current_step <= 3:
-        parts.append(f"\n{memory_hints}")
+    # Memory hints are now in the system prompt (cached static + dynamic split)
+    # so they don't need to be repeated in the user message.
 
     parts.append(f"\n## Goal\n{task_spec.goal}")
 
