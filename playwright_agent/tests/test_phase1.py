@@ -316,6 +316,78 @@ def test_checkpoint_flushes_live_action_log_and_budget():
         assert action_log[0]["action"] == "save_progress"
 
 
+def test_output_manager_load_interrupted_state_hydrates_resume_data():
+    """Interrupted samples should restore artifacts, action log, and resume payload."""
+    with tempfile.TemporaryDirectory() as tmp:
+        base = Path(tmp)
+        om = OutputManager(base, "s1")
+        shot = om.save_screenshot(b"png", "page", "https://example.com/current")
+        om.log_step(StepRecord(step=1, action="screenshot", params={"label": "page"}, result="saved"))
+        om.write_checkpoint(
+            step=1,
+            accumulated={"field": "value"},
+            progress_notes=["Checkpointed once"],
+            max_steps=40,
+            current_url="https://example.com/current",
+            resume_state={
+                "step": 1,
+                "current_url": "https://example.com/current",
+                "history": [{"step": 1, "action": "screenshot", "result": "saved"}],
+                "progress": {"pages_visited": ["https://example.com/current"], "fields_found": [],
+                             "artifacts": ["page"], "failed_urls": [], "exhausted_pages": [],
+                             "blocked_selectors": [], "dead_ends": []},
+                "accumulated": {"field": "value"},
+                "progress_notes": ["Checkpointed once"],
+                "step_summaries": [],
+                "last_summarized_idx": 0,
+                "pagination_bonus": 0,
+                "effective_max": 40,
+                "last_data_step": 1,
+                "items_collected": 0,
+                "seen_screenshot_hashes": [shot.sha256],
+                "selector_fail_counts": {},
+                "loop_counter": [],
+                "consecutive_failures": 0,
+                "network_errors": 0,
+                "warned_75": False,
+                "warned_90": False,
+                "stagnation_count": 0,
+                "stagnation_level": 0,
+            },
+        )
+
+        resumed = OutputManager(base, "s1")
+        checkpoint = resumed.load_interrupted_state()
+
+        assert checkpoint is not None
+        assert checkpoint["current_url"] == "https://example.com/current"
+        assert resumed._counter == 1
+        assert len(resumed._artifacts) == 1
+        assert resumed._artifacts[0].filename == "01_page.png"
+        assert len(resumed._action_log) == 1
+        next_shot = resumed.save_screenshot(b"png2", "next", "https://example.com/next")
+        assert next_shot.filename == "02_next.png"
+
+
+def test_output_manager_load_interrupted_state_ignores_finished_samples():
+    """Existing final results must not be treated as interrupted-resume candidates."""
+    with tempfile.TemporaryDirectory() as tmp:
+        base = Path(tmp)
+        om = OutputManager(base, "s1")
+        om.write_checkpoint(
+            step=2,
+            accumulated={"field": "value"},
+            progress_notes=["done"],
+            max_steps=40,
+            current_url="https://example.com/current",
+            resume_state={"step": 2, "current_url": "https://example.com/current"},
+        )
+        om.write_result(status="failed", extracted={"field": "value"}, steps=2)
+
+        resumed = OutputManager(base, "s1")
+        assert resumed.load_interrupted_state() is None
+
+
 # ---------- CSV Merge ----------
 
 def test_csv_merge_basic():

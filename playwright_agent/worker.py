@@ -34,6 +34,12 @@ async def run_sample(
     log = logger.bind(sample_id=sample.sample_id)
     log.info("Worker started")
     output_mgr = OutputManager(evidence_dir, sample.sample_id)
+    resume_checkpoint = output_mgr.load_interrupted_state()
+    if resume_checkpoint:
+        log.info(
+            f"Worker resuming interrupted sample | step={resume_checkpoint.get('step', 0)} "
+            f"| status={resume_checkpoint.get('status', 'unknown')}"
+        )
 
     # Build context options
     context_opts = {}
@@ -52,7 +58,9 @@ async def run_sample(
         await page.emulate_media(color_scheme="light")
 
         try:
-            await agent_loop.run(page, sample, task_spec, output_mgr)
+            await agent_loop.run(
+                page, sample, task_spec, output_mgr, resume_checkpoint=resume_checkpoint
+            )
         except Exception as e:
             log.error(f"Agent exception: {str(e)[:300]}")
             output_mgr.write_result(

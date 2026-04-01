@@ -355,7 +355,7 @@ evidence/run_20260327_140000/
 cd playwright_agent
 python -m pytest tests/ -v
 
-# 114 tests covering:
+# 120 tests covering:
 # - Tools + models (test_phase1.py)
 # - DOM extractor + vision (test_phase2.py)
 # - Agent loop + reflection + recovery + batching (test_phase3.py)

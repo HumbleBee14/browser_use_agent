@@ -114,11 +114,40 @@ def _get_terminal_tools() -> list[dict]:
     return [t for t in schema if t["name"] in ("done", "fail")]
 
 
+def _serialize_loop_counter(loop_counter: dict[tuple, int]) -> list[dict]:
+    """Make tuple-keyed loop counter JSON-serializable for checkpoint resume."""
+    items = []
+    for (url, action), count in loop_counter.items():
+        items.append({"url": url, "action": action, "count": count})
+    return items
+
+
+def _deserialize_loop_counter(items: list[dict] | None) -> dict[tuple, int]:
+    """Restore loop counter from checkpoint payload."""
+    restored: dict[tuple, int] = {}
+    if not items:
+        return restored
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        url = item.get("url")
+        action = item.get("action")
+        count = item.get("count", 0)
+        if not isinstance(url, str) or not isinstance(action, str):
+            continue
+        try:
+            restored[(url, action)] = int(count)
+        except (TypeError, ValueError):
+            continue
+    return restored
+
+
 async def run(
     page: Page,
     sample: SampleInput,
     task_spec: TaskSpec,
     output_mgr: OutputManager,
+    resume_checkpoint: dict | None = None,
 ) -> None:
     """Run the agent loop for one sample.
 
@@ -180,11 +209,165 @@ async def run(
     _warned_75: bool = False
     _warned_90: bool = False
 
+    resume_state = resume_checkpoint.get("resume_state") if isinstance(resume_checkpoint, dict) else None
+    resume_step = 0
+    if isinstance(resume_state, dict):
+        resume_step = max(0, int(resume_checkpoint.get("step", 0) or 0))
+        restored_history = resume_state.get("history")
+        if isinstance(restored_history, list):
+            history = restored_history
+
+        restored_progress = resume_state.get("progress")
+        if isinstance(restored_progress, dict):
+            for key in progress:
+                value = restored_progress.get(key)
+                if isinstance(value, list):
+                    progress[key] = value
+
+        restored_accumulated = resume_state.get("accumulated")
+        if isinstance(restored_accumulated, dict):
+            accumulated = restored_accumulated
+        restored_notes = resume_state.get("progress_notes")
+        if isinstance(restored_notes, list):
+            progress_notes = [str(n) for n in restored_notes]
+        restored_summaries = resume_state.get("step_summaries")
+        if isinstance(restored_summaries, list):
+            step_summaries = [str(s) for s in restored_summaries]
+
+        try:
+            last_summarized_idx = max(0, int(resume_state.get("last_summarized_idx", 0) or 0))
+        except (TypeError, ValueError):
+            last_summarized_idx = 0
+        try:
+            pagination_bonus = max(0, int(resume_state.get("pagination_bonus", 0) or 0))
+        except (TypeError, ValueError):
+            pagination_bonus = 0
+        try:
+            last_data_step = max(0, int(resume_state.get("last_data_step", resume_step) or resume_step))
+        except (TypeError, ValueError):
+            last_data_step = resume_step
+        try:
+            items_collected = max(0, int(resume_state.get("items_collected", 0) or 0))
+        except (TypeError, ValueError):
+            items_collected = 0
+        try:
+            consecutive_failures = max(0, int(resume_state.get("consecutive_failures", 0) or 0))
+        except (TypeError, ValueError):
+            consecutive_failures = 0
+        try:
+            network_errors = max(0, int(resume_state.get("network_errors", 0) or 0))
+        except (TypeError, ValueError):
+            network_errors = 0
+        try:
+            _stagnation_count = max(0, int(resume_state.get("stagnation_count", 0) or 0))
+        except (TypeError, ValueError):
+            _stagnation_count = 0
+        try:
+            _stagnation_level = max(0, int(resume_state.get("stagnation_level", 0) or 0))
+        except (TypeError, ValueError):
+            _stagnation_level = 0
+
+        restored_warned_75 = resume_state.get("warned_75")
+        if isinstance(restored_warned_75, bool):
+            _warned_75 = restored_warned_75
+        restored_warned_90 = resume_state.get("warned_90")
+        if isinstance(restored_warned_90, bool):
+            _warned_90 = restored_warned_90
+
+        restored_hashes = resume_state.get("seen_screenshot_hashes")
+        if isinstance(restored_hashes, list):
+            seen_screenshot_hashes = {str(h) for h in restored_hashes if h}
+        else:
+            seen_screenshot_hashes = {a.sha256 for a in output_mgr._artifacts}
+
+        restored_selector_fails = resume_state.get("selector_fail_counts")
+        if isinstance(restored_selector_fails, dict):
+            hydrated_selector_fails: dict[str, int] = {}
+            for k, v in restored_selector_fails.items():
+                if not isinstance(k, str):
+                    continue
+                try:
+                    hydrated_selector_fails[k] = int(v)
+                except (TypeError, ValueError):
+                    continue
+            _selector_fail_counts = hydrated_selector_fails
+
+        restored_loop_counter = resume_state.get("loop_counter")
+        if isinstance(restored_loop_counter, list):
+            loop_counter = _deserialize_loop_counter(restored_loop_counter)
+
+        # Browser-agent timeout should apply to the new live browser session,
+        # not charge time spent in the dead session before resume.
+        start_time = time.monotonic()
+
+        log.info(
+            f"Resume state loaded | step={resume_step} | history={len(history)} | "
+            f"summaries={len(step_summaries)} | artifacts={len(output_mgr._artifacts)}"
+        )
+
+    effective_max = task_spec.max_steps + pagination_bonus
+    if isinstance(resume_state, dict):
+        try:
+            restored_effective_max = int(resume_state.get("effective_max", effective_max) or effective_max)
+            if restored_effective_max >= task_spec.max_steps:
+                effective_max = restored_effective_max
+        except (TypeError, ValueError):
+            pass
+        _warned_75 = _warned_75 or (effective_max > 0 and resume_step / effective_max >= 0.75)
+        _warned_90 = _warned_90 or (effective_max > 0 and resume_step / effective_max >= 0.90)
+
+    def _build_resume_state(current_step: int) -> dict:
+        """Capture enough loop state to continue an interrupted sample."""
+        return {
+            "step": current_step,
+            "current_url": page.url,
+            "history": json.loads(json.dumps(history, default=str)),
+            "progress": json.loads(json.dumps(progress, default=str)),
+            "accumulated": json.loads(json.dumps(accumulated, default=str)),
+            "progress_notes": list(progress_notes),
+            "step_summaries": list(step_summaries),
+            "last_summarized_idx": last_summarized_idx,
+            "pagination_bonus": pagination_bonus,
+            "effective_max": effective_max,
+            "last_data_step": last_data_step,
+            "items_collected": items_collected,
+            "seen_screenshot_hashes": sorted(seen_screenshot_hashes),
+            "selector_fail_counts": dict(_selector_fail_counts),
+            "loop_counter": _serialize_loop_counter(loop_counter),
+            "consecutive_failures": consecutive_failures,
+            "network_errors": network_errors,
+            "warned_75": _warned_75,
+            "warned_90": _warned_90,
+            "stagnation_count": _stagnation_count,
+            "stagnation_level": _stagnation_level,
+        }
+
+    def _write_live_checkpoint(current_step: int, accumulated_payload: dict, *, status: str = "in_progress") -> None:
+        """Write checkpoint plus resume metadata without repeating call-site plumbing."""
+        output_mgr.write_checkpoint(
+            current_step,
+            accumulated_payload,
+            progress_notes,
+            max_steps=effective_max,
+            status=status,
+            current_url=page.url,
+            resume_state=_build_resume_state(current_step),
+        )
+
     # Navigate to starting URL if provided — fail fast if unreachable
-    if sample.url:
-        result = await browser.goto(page, sample.url)
-        history.append({"step": 0, "action": "goto", "url": sample.url,
-                        "result": result.description if result.success else result.error})
+    starting_url = sample.url
+    if isinstance(resume_state, dict):
+        restored_url = str(resume_state.get("current_url") or "")
+        if restored_url:
+            starting_url = restored_url
+    if starting_url:
+        result = await browser.goto(page, starting_url)
+        if (not result.success and isinstance(resume_state, dict)
+                and sample.url and starting_url != sample.url):
+            log.warning(
+                f"Resume navigation failed for {starting_url[:120]} — falling back to sample start URL"
+            )
+            result = await browser.goto(page, sample.url)
         if not result.success:
             log.error(f"Initial navigation failed: {result.error}")
             output_mgr.write_result(
@@ -193,9 +376,21 @@ async def run(
                 steps=0,
             )
             return
+        if isinstance(resume_state, dict):
+            history.append({
+                "step": resume_step,
+                "action": "system_notice",
+                "is_meta": True,
+                "result": (
+                    f"Resumed interrupted sample from checkpoint at step {resume_step}. "
+                    f"Continue from the restored page state."
+                ),
+            })
+        else:
+            history.append({"step": 0, "action": "goto", "url": sample.url,
+                            "result": result.description if result.success else result.error})
 
-    effective_max = task_spec.max_steps
-    for step in range(1, task_spec.max_steps + 200):  # hard ceiling with pagination bonus
+    for step in range(resume_step + 1, task_spec.max_steps + 200):  # hard ceiling with pagination bonus
         if step > effective_max:
             break
 
@@ -214,9 +409,7 @@ async def run(
         if termination:
             status, reason = termination
             log.warning(f"Smart termination | status={status} | {reason}")
-            output_mgr.write_checkpoint(
-                step, accumulated or {}, progress_notes, max_steps=effective_max, status=status
-            )
+            _write_live_checkpoint(step, accumulated or {}, status=status)
             output_mgr.write_result(
                 status=status,
                 extracted=accumulated or {},
@@ -412,9 +605,7 @@ async def run(
                             prefer_fallback=True,
                         )
                         if final_result:
-                            output_mgr.write_checkpoint(
-                                step, final_result, progress_notes, max_steps=effective_max, status="partial_success"
-                            )
+                            _write_live_checkpoint(step, final_result, status="partial_success")
                             output_mgr.write_result(
                                 status="partial_success", extracted=final_result,
                                 errors=["LLM error — finalized via consolidation"],
@@ -426,9 +617,7 @@ async def run(
                         step=step, action="llm_error", result=str(e)[:200], url=page.url,
                     ))
                     final_status = "failed" if not accumulated else "partial_success"
-                    output_mgr.write_checkpoint(
-                        step, accumulated or {}, progress_notes, max_steps=effective_max, status="llm_error"
-                    )
+                    _write_live_checkpoint(step, accumulated or {}, status="llm_error")
                     output_mgr.write_result(
                         status=final_status,
                         extracted=accumulated or {},
@@ -602,7 +791,7 @@ async def run(
             if next_goal:
                 sp_entry["goal"] = next_goal
             history.append(sp_entry)
-            output_mgr.write_checkpoint(step, accumulated, progress_notes, max_steps=effective_max)
+            _write_live_checkpoint(step, accumulated)
 
             # Follow-up system notice based on outcome
             if task_spec.expected_items > 0 and items_collected >= task_spec.expected_items:
@@ -658,7 +847,7 @@ async def run(
 
         # ---- AUTO-CHECKPOINT: write checkpoint.json every N steps ----
         if step > 0 and step % CHECKPOINT_INTERVAL == 0:
-            output_mgr.write_checkpoint(step, accumulated, progress_notes, max_steps=effective_max)
+            _write_live_checkpoint(step, accumulated)
 
         # Log the step (with reflection fields for audit trail)
         output_mgr.log_step(StepRecord(
@@ -730,9 +919,7 @@ async def run(
                     continue
                 else:
                     # Last step — cannot retry. Write needs_review, not done.
-                    output_mgr.write_checkpoint(
-                        step, extracted or {}, progress_notes, max_steps=effective_max, status="needs_review"
-                    )
+                    _write_live_checkpoint(step, extracted or {}, status="needs_review")
                     output_mgr.write_result(
                         status="needs_review", extracted=extracted,
                         errors=notice_parts, steps=step,
@@ -765,9 +952,7 @@ async def run(
                     )
 
             log.info(f"Completed | status={final_status} | steps={step} | fields={len(extracted)} | items={items_collected}")
-            output_mgr.write_checkpoint(
-                step, checkpoint_payload, progress_notes, max_steps=effective_max, status=final_status
-            )
+            _write_live_checkpoint(step, checkpoint_payload, status=final_status)
             output_mgr.write_result(
                 status=final_status, extracted=extracted, judgment=judgment or None,
                 notes=completion_notes,
@@ -796,9 +981,7 @@ async def run(
 
         if action.action == "fail":
             log.warning(f"Failed | reason={action.note} | steps={step}")
-            output_mgr.write_checkpoint(
-                step, accumulated or {}, progress_notes, max_steps=effective_max, status="failed"
-            )
+            _write_live_checkpoint(step, accumulated or {}, status="failed")
             output_mgr.write_result(
                 status="failed",
                 errors=[action.note or "Agent called fail"],
@@ -986,9 +1169,7 @@ async def run(
             _stagnation_level = max(_stagnation_level, level)
             log.warning(f"Step {step} | Recovery L{level}: {message[:120]}")
             if level >= 2 and accumulated:
-                output_mgr.write_checkpoint(
-                    step, accumulated, progress_notes, max_steps=effective_max, status="stagnation"
-                )
+                _write_live_checkpoint(step, accumulated, status="stagnation")
             history.append({"step": step, "action": "system_notice", "is_meta": True, "result": message})
             if level >= 1:
                 last_data_step = step  # reset to avoid consecutive escalation spam
@@ -1002,9 +1183,7 @@ async def run(
             client, task_spec, accumulated, progress_notes, progress, page_state,
         )
         if final_result:
-            output_mgr.write_checkpoint(
-                step, final_result, progress_notes, max_steps=effective_max, status="partial_success"
-            )
+            _write_live_checkpoint(step, final_result, status="partial_success")
             output_mgr.write_result(
                 status="partial_success",
                 extracted=final_result,
@@ -1020,9 +1199,7 @@ async def run(
                     pass
             return
 
-    output_mgr.write_checkpoint(
-        step, accumulated or {}, progress_notes, max_steps=effective_max, status="max_steps_exceeded"
-    )
+    _write_live_checkpoint(step, accumulated or {}, status="max_steps_exceeded")
     final_status = "partial_success" if accumulated else "failed"
     output_mgr.write_result(
         status=final_status,

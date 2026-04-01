@@ -12,8 +12,12 @@ import json
 import re
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 
 from models.actions import EvidenceArtifact, SampleResult, StepRecord
+
+
+_FINAL_RESULT_STATUSES = {"done", "failed", "needs_review", "partial_success"}
 
 
 class OutputManager:
@@ -32,6 +36,84 @@ class OutputManager:
         self._artifacts: list[EvidenceArtifact] = []
         self._action_log: list[StepRecord] = []
         self._started_at = datetime.now(timezone.utc).isoformat()
+
+    def _checkpoint_path(self) -> Path:
+        return self.sample_dir / "checkpoint.json"
+
+    def _result_path(self) -> Path:
+        return self.sample_dir / "result.json"
+
+    def _action_log_path(self) -> Path:
+        return self.sample_dir / "action_log.json"
+
+    def _load_json(self, path: Path) -> dict[str, Any] | list[Any] | None:
+        if not path.exists():
+            return None
+        try:
+            return json.loads(path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            return None
+
+    def _infer_counter_from_artifacts(self) -> int:
+        max_counter = 0
+        for artifact in self._artifacts:
+            match = re.match(r"^(\d+)_", artifact.filename)
+            if match:
+                max_counter = max(max_counter, int(match.group(1)))
+        return max_counter
+
+    def load_interrupted_state(self) -> dict[str, Any] | None:
+        """Hydrate in-memory output state for an unfinished interrupted sample.
+
+        Resume is only enabled when:
+        - a checkpoint exists
+        - no final result.json exists
+        - checkpoint status is non-terminal
+        - checkpoint carries a resume_state payload
+        """
+        result_data = self._load_json(self._result_path())
+        if isinstance(result_data, dict) and result_data.get("status") in _FINAL_RESULT_STATUSES:
+            return None
+
+        checkpoint = self._load_json(self._checkpoint_path())
+        if not isinstance(checkpoint, dict):
+            return None
+
+        if checkpoint.get("status") not in {"in_progress", "stagnation"}:
+            return None
+
+        resume_state = checkpoint.get("resume_state")
+        if not isinstance(resume_state, dict):
+            return None
+
+        self._started_at = str(checkpoint.get("started_at") or self._started_at)
+
+        artifacts = checkpoint.get("artifacts_so_far", [])
+        if isinstance(artifacts, list):
+            hydrated_artifacts = []
+            for item in artifacts:
+                if not isinstance(item, dict):
+                    continue
+                try:
+                    hydrated_artifacts.append(EvidenceArtifact(**item))
+                except Exception:
+                    continue
+            self._artifacts = hydrated_artifacts
+            self._counter = self._infer_counter_from_artifacts()
+
+        action_log = self._load_json(self._action_log_path())
+        if isinstance(action_log, list):
+            hydrated_log = []
+            for item in action_log:
+                if not isinstance(item, dict):
+                    continue
+                try:
+                    hydrated_log.append(StepRecord(**item))
+                except Exception:
+                    continue
+            self._action_log = hydrated_log
+
+        return checkpoint
 
     def save_screenshot(self, data: bytes, label: str, source_url: str) -> EvidenceArtifact:
         """Save screenshot with sequential naming and SHA-256 hash."""
@@ -105,6 +187,9 @@ class OutputManager:
         progress_notes: list[str],
         max_steps: int | None = None,
         status: str = "in_progress",
+        *,
+        current_url: str = "",
+        resume_state: dict[str, Any] | None = None,
     ) -> None:
         """Write a live checkpoint file that updates as the agent runs.
 
@@ -117,6 +202,7 @@ class OutputManager:
             "status": status,
             "step": step,
             "max_steps": max_steps,
+            "current_url": current_url,
             "accumulated_data": accumulated,
             "progress_notes": progress_notes,
             "artifacts_so_far": [a.model_dump() for a in self._artifacts],
@@ -124,6 +210,8 @@ class OutputManager:
             "started_at": self._started_at,
             "updated_at": datetime.now(timezone.utc).isoformat(),
         }
+        if resume_state is not None:
+            checkpoint["resume_state"] = resume_state
         path = self.sample_dir / "checkpoint.json"
         self._write_json_atomic(path, json.dumps(checkpoint, indent=2, default=str))
 
