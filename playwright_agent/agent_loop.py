@@ -300,8 +300,20 @@ async def run(
             log.info(f"Step {step} | Final step — tools restricted to done/fail")
 
         # ---- 2c. BUILD PROMPT ----
-        # Dynamic history window: estimate fixed prompt costs, then fit history to budget
-        fixed_tokens = _estimate_tokens(page_state + vision_text + task_spec.system_prompt + task_spec.goal)
+        # Estimate ALL fixed prompt parts so history budget reflects real remaining capacity.
+        # Missing any part here means history over-allocates and can hit context limits.
+        fixed_parts = [
+            page_state,
+            vision_text,
+            task_spec.system_prompt,
+            task_spec.goal,
+            json.dumps(task_spec.output_schema) if task_spec.output_schema else "",
+            json.dumps(accumulated) if accumulated else "",
+            "\n".join(step_summaries[-3:]) if step_summaries else "",
+            json.dumps(progress) if progress else "",
+            memory_hints or "",
+        ]
+        fixed_tokens = _estimate_tokens("".join(fixed_parts))
         fitted_history = _fit_history(history, fixed_tokens)
 
         messages = _build_messages(

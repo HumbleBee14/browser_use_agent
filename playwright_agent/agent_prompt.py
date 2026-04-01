@@ -56,22 +56,22 @@ def fit_history(full_history: list[dict], fixed_tokens: int) -> list[dict]:
     if not full_history:
         return []
 
-    # Strip stale meta messages before any selection — they waste budget
-    real_history = [h for h in full_history if not h.get("is_meta", False)]
-    # But keep recent meta (last 3 steps) — they're still relevant context
-    recent_meta = [
-        h for h in full_history[-3:]
-        if h.get("is_meta", False)
+    # Strip stale meta messages before any selection — they waste budget.
+    # Keep recent meta (last 3 entries) in chronological position — not appended.
+    stale_cutoff = max(0, len(full_history) - 3)
+    filtered_history = [
+        h for i, h in enumerate(full_history)
+        if not h.get("is_meta", False) or i >= stale_cutoff
     ]
 
-    recency_window = real_history[-MIN_HISTORY_ITEMS:] + recent_meta
+    recency_window = filtered_history[-MIN_HISTORY_ITEMS:]
     recency_tokens = sum(estimate_tokens(json.dumps(h, default=str)) for h in recency_window)
 
     remaining_budget = budget - recency_tokens
-    if remaining_budget <= 0 or len(real_history) <= MIN_HISTORY_ITEMS:
+    if remaining_budget <= 0 or len(filtered_history) <= MIN_HISTORY_ITEMS:
         return recency_window
 
-    older = real_history[:-MIN_HISTORY_ITEMS]
+    older = filtered_history[:-MIN_HISTORY_ITEMS]
     scored = []
     for i, item in enumerate(older):
         action = item.get("action", "")
@@ -131,8 +131,9 @@ async def summarize_steps(
         return f"Steps {steps[0]['step']}-{steps[-1]['step']}:\n{response.content[0].text.strip()}"
     except Exception as e:
         log.debug(f"LLM summary failed, using mechanical fallback: {str(e)[:100]}")
-        actions = "; ".join(f"s{h['step']}:{h['action']}" for h in steps)
-        return f"Steps {steps[0]['step']}-{steps[-1]['step']}: {actions}"
+        # Fallback also excludes meta — same filtering as LLM path
+        actions = "; ".join(f"s{h['step']}:{h['action']}" for h in real_steps)
+        return f"Steps {real_steps[0]['step']}-{real_steps[-1]['step']}: {actions}"
 
 
 def build_messages(
