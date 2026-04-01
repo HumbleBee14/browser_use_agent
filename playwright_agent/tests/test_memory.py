@@ -6,10 +6,12 @@ Or:  python tests/test_memory.py
 
 from __future__ import annotations
 
+import asyncio
 import json
 import sys
 import tempfile
 from pathlib import Path
+from types import SimpleNamespace
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
@@ -250,6 +252,30 @@ def test_fit_history_shrinks_with_large_fixed_tokens():
     assert len(small_result) <= len(big_result), "Large fixed_tokens should shrink history"
 
 
+def test_fit_history_preserves_recent_meta_order():
+    """Recent meta messages should stay in chronological order inside recency context."""
+    from agent_prompt import fit_history
+
+    history = [
+        {"step": 1, "action": "goto", "result": "page 1"},
+        {"step": 2, "action": "click", "result": "clicked"},
+        {"step": 3, "action": "extract", "result": "Extracted 10 chars"},
+        {"step": 4, "action": "save_progress", "result": "saved"},
+        {"step": 4, "action": "system_notice", "is_meta": True, "result": "wrap up soon"},
+        {"step": 5, "action": "goto", "result": "page 2"},
+    ]
+
+    result = fit_history(history, fixed_tokens=0)
+    recent = [(item["step"], item["action"]) for item in result[-5:]]
+    assert recent == [
+        (2, "click"),
+        (3, "extract"),
+        (4, "save_progress"),
+        (4, "system_notice"),
+        (5, "goto"),
+    ]
+
+
 # ---------------------------------------------------------------------------
 # Structured summary format
 # ---------------------------------------------------------------------------
@@ -262,6 +288,117 @@ def test_structured_summary_prompt_format():
     assert "FOUND:" in source
     assert "GAPS:" in source
     assert "NEXT:" in source
+
+
+def test_summarize_steps_uses_non_meta_range():
+    """Summary headers should reflect the actual non-meta steps being summarized."""
+    from agent_prompt import summarize_steps
+
+    class _FakeMessages:
+        async def create(self, **kwargs):
+            return SimpleNamespace(content=[SimpleNamespace(text="FOUND: x\nGAPS: y\nNEXT: z")])
+
+    class _FakeClient:
+        messages = _FakeMessages()
+
+    class _FakeLog:
+        def debug(self, *args, **kwargs):
+            pass
+
+    steps = [
+        {"step": 1, "action": "system_notice", "is_meta": True, "result": "notice"},
+        {"step": 2, "action": "goto", "result": "page"},
+        {"step": 3, "action": "extract", "result": "Extracted 10 chars"},
+        {"step": 4, "action": "system_notice", "is_meta": True, "result": "another notice"},
+    ]
+
+    result = asyncio.run(summarize_steps(_FakeClient(), steps, "goal", _FakeLog()))
+    assert result.startswith("Steps 2-3:\n")
+
+
+def test_fixed_prompt_token_estimate_matches_rendered_prompt():
+    """Fixed-token estimation should match the exact non-history prompt we send."""
+    from agent_prompt import (
+        build_messages,
+        build_system_blocks,
+        estimate_fixed_prompt_tokens,
+        estimate_tokens,
+    )
+
+    sample = SimpleNamespace(
+        sample_id="sample-1",
+        url="https://example.com",
+        extra={"ticket": "ABC-123"},
+    )
+    task_spec = SimpleNamespace(
+        max_steps=40,
+        goal="Collect the page data.",
+        output_schema={"name": "string"},
+        required_fields=["name"],
+        judgment_required=True,
+        judgment_question="Is this complete?",
+        judgment_output_schema={"answer": "string"},
+        system_prompt="You are a browser agent.",
+    )
+    snap = SimpleNamespace(nodes=[])
+    progress = {
+        "pages_visited": [f"url-{i}" for i in range(20)],
+        "artifacts": [f"shot-{i}" for i in range(20)],
+        "fields_found": [f"field-{i}" for i in range(8)],
+        "failed_urls": [f"bad-{i}" for i in range(8)],
+        "blocked_selectors": [f"selector-{i}" for i in range(8)],
+        "dead_ends": [f"dead-{i}" for i in range(5)],
+        "exhausted_pages": [f"done-{i}" for i in range(8)],
+    }
+    accumulated = {"blob": "x" * 5000}
+    step_summaries = ["sum-1", "sum-2", "sum-3", "sum-4"]
+    step_tools = [{"name": "done", "description": "Finish the task"}]
+
+    estimated = estimate_fixed_prompt_tokens(
+        page_state="URL: https://example.com\n[0] heading",
+        vision_text="",
+        task_spec=task_spec,
+        sample=sample,
+        snap=snap,
+        consecutive_failures=0,
+        progress=progress,
+        accumulated=accumulated,
+        step_summaries=step_summaries,
+        current_step=4,
+        memory_hints="Use the sidebar first.",
+        effective_max=40,
+        step_tools=step_tools,
+    )
+
+    messages = build_messages(
+        page_state="URL: https://example.com\n[0] heading",
+        vision_text="",
+        history=[],
+        task_spec=task_spec,
+        sample=sample,
+        snap=snap,
+        consecutive_failures=0,
+        loop_counter={},
+        progress=progress,
+        accumulated=accumulated,
+        step_summaries=step_summaries,
+        current_step=4,
+        memory_hints="Use the sidebar first.",
+        effective_max=40,
+    )
+    system_blocks = build_system_blocks(
+        task_spec.system_prompt,
+        sample,
+        "Use the sidebar first.",
+        4,
+    )
+    expected = estimate_tokens(
+        "\n".join(block["text"] for block in system_blocks)
+        + messages[0]["content"]
+        + json.dumps(step_tools, default=str)
+    )
+
+    assert estimated == expected
 
 
 # ---------------------------------------------------------------------------

@@ -46,8 +46,9 @@ from agent_navigation import (
 from agent_prompt import (
     MIN_HISTORY_ITEMS,
     PROMPT_TOKEN_BUDGET,
+    build_system_blocks as _build_system_blocks,
     build_messages as _build_messages,
-    estimate_tokens as _estimate_tokens,
+    estimate_fixed_prompt_tokens as _estimate_fixed_prompt_tokens,
     fit_history as _fit_history,
     summarize_steps as _summarize_steps,
 )
@@ -300,20 +301,21 @@ async def run(
             log.info(f"Step {step} | Final step — tools restricted to done/fail")
 
         # ---- 2c. BUILD PROMPT ----
-        # Estimate ALL fixed prompt parts so history budget reflects real remaining capacity.
-        # Missing any part here means history over-allocates and can hit context limits.
-        fixed_parts = [
-            page_state,
-            vision_text,
-            task_spec.system_prompt,
-            task_spec.goal,
-            json.dumps(task_spec.output_schema) if task_spec.output_schema else "",
-            json.dumps(accumulated) if accumulated else "",
-            "\n".join(step_summaries[-3:]) if step_summaries else "",
-            json.dumps(progress) if progress else "",
-            memory_hints or "",
-        ]
-        fixed_tokens = _estimate_tokens("".join(fixed_parts))
+        fixed_tokens = _estimate_fixed_prompt_tokens(
+            page_state=page_state,
+            vision_text=vision_text,
+            task_spec=task_spec,
+            sample=sample,
+            snap=snap,
+            consecutive_failures=consecutive_failures,
+            progress=progress,
+            accumulated=accumulated,
+            step_summaries=step_summaries,
+            current_step=step,
+            memory_hints=memory_hints,
+            effective_max=effective_max,
+            step_tools=step_tools,
+        )
         fitted_history = _fit_history(history, fixed_tokens)
 
         messages = _build_messages(
@@ -350,25 +352,12 @@ async def run(
         response = None
         for attempt in range(1, LLM_MAX_RETRIES + 1):
             try:
-                # Prompt cache split: static system prompt is cached across all steps
-                # (never changes per run). Dynamic context (memory, sample) is appended
-                # as a separate block — changes don't invalidate the cache on the static prefix.
-                system_blocks = [{
-                    "type": "text",
-                    "text": task_spec.system_prompt,
-                    "cache_control": {"type": "ephemeral"},
-                }]
-                # Dynamic context — NOT cached (changes per step or per sample)
-                dynamic_parts = []
-                if memory_hints and step <= 3:
-                    dynamic_parts.append(f"Domain hints from previous samples:\n{memory_hints}")
-                if sample.extra:
-                    dynamic_parts.append(f"Sample context: {json.dumps(sample.extra)}")
-                if dynamic_parts:
-                    system_blocks.append({
-                        "type": "text",
-                        "text": "\n".join(dynamic_parts),
-                    })
+                system_blocks = _build_system_blocks(
+                    task_spec.system_prompt,
+                    sample,
+                    memory_hints,
+                    step,
+                )
 
                 response = await client.messages.create(
                     model=config.LLM_MODEL,
@@ -1049,4 +1038,3 @@ async def run(
             )
         except Exception:
             pass
-

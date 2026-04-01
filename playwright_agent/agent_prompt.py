@@ -43,6 +43,32 @@ def estimate_tokens(text: str) -> int:
     return max(1, len(text) // 4)
 
 
+def build_system_blocks(
+    system_prompt: str,
+    sample: SampleInput,
+    memory_hints: str | None,
+    current_step: int,
+) -> list[dict]:
+    """Build system blocks for Anthropic prompt caching with exact runtime conditions."""
+    system_blocks = [{
+        "type": "text",
+        "text": system_prompt,
+        "cache_control": {"type": "ephemeral"},
+    }]
+
+    dynamic_parts = []
+    if memory_hints and current_step <= 3:
+        dynamic_parts.append(f"Domain hints from previous samples:\n{memory_hints}")
+    if sample.extra:
+        dynamic_parts.append(f"Sample context: {json.dumps(sample.extra)}")
+    if dynamic_parts:
+        system_blocks.append({
+            "type": "text",
+            "text": "\n".join(dynamic_parts),
+        })
+    return system_blocks
+
+
 def fit_history(full_history: list[dict], fixed_tokens: int) -> list[dict]:
     """Select history items that fit within the token budget.
 
@@ -128,7 +154,7 @@ async def summarize_steps(
                 ),
             }],
         )
-        return f"Steps {steps[0]['step']}-{steps[-1]['step']}:\n{response.content[0].text.strip()}"
+        return f"Steps {real_steps[0]['step']}-{real_steps[-1]['step']}:\n{response.content[0].text.strip()}"
     except Exception as e:
         log.debug(f"LLM summary failed, using mechanical fallback: {str(e)[:100]}")
         # Fallback also excludes meta — same filtering as LLM path
@@ -136,23 +162,20 @@ async def summarize_steps(
         return f"Steps {real_steps[0]['step']}-{real_steps[-1]['step']}: {actions}"
 
 
-def build_messages(
+def _build_base_message_parts(
     page_state: str,
     vision_text: str,
-    history: list[dict],
     task_spec: TaskSpec,
     sample: SampleInput,
     snap: dom_extractor.DOMSnapshot,
     consecutive_failures: int,
-    loop_counter: dict,
     progress: dict | None = None,
     accumulated: dict | None = None,
     step_summaries: list[str] | None = None,
     current_step: int = 0,
-    memory_hints: str | None = None,
     effective_max: int | None = None,
-) -> list[dict]:
-    """Build the user message list for the LLM call."""
+) -> list[str]:
+    """Build the non-history sections of the user prompt."""
     parts = []
 
     parts.append(f"## Current page state\n{page_state}")
@@ -195,46 +218,6 @@ def build_messages(
             progress_lines.append(f"Exhausted pages (all data taken): {', '.join(progress['exhausted_pages'][-5:])}")
         if progress_lines:
             parts.append(f"\n## Run state\n" + "\n".join(progress_lines))
-
-    if history:
-        history_lines = []
-        show_reflection = config.REFLECTION_MODE == "full"
-        # Microcompact: stale results (older than last 5) get truncated to stubs.
-        # Recent results stay full — the agent needs them for decision-making.
-        # This saves ~100 tokens per old step without losing the action trace.
-        recency_boundary = max(0, len(history) - 5)
-        for i, h in enumerate(history):
-            is_stale = i < recency_boundary
-            is_meta = h.get("is_meta", False)
-
-            # Skip meta messages (nudges, recovery prompts) — they served their purpose
-            if is_meta and is_stale:
-                continue
-
-            if is_stale:
-                # Compact stale results to short stubs
-                action = h.get("action", "")
-                if action == "screenshot":
-                    # Extract just the filename from the full result
-                    result = h.get("result", "")
-                    fname = result.split(": ")[1].split(" ")[0] if ": " in result else "screenshot"
-                    line = f"Step {h['step']}: screenshot → [{fname}]"
-                elif action == "extract":
-                    chars = h.get("result", "").split(" ")[1] if "Extracted" in h.get("result", "") else "?"
-                    line = f"Step {h['step']}: extract → [{chars} chars saved]"
-                else:
-                    line = f"Step {h['step']}: {action} → {h.get('result', '')[:50]}"
-            else:
-                # Recent results stay full
-                line = f"Step {h['step']}: {h['action']} → {h.get('result', '')[:100]}"
-
-            if show_reflection and not is_stale:
-                if h.get("memory"):
-                    line += f" [mem: {h['memory'][:60]}]"
-                if h.get("goal"):
-                    line += f" [goal: {h['goal'][:60]}]"
-            history_lines.append(line)
-        parts.append(f"\n## Action history ({len(history_lines)} items)\n" + "\n".join(history_lines))
 
     if consecutive_failures >= 3:
         interactive = [
@@ -284,5 +267,116 @@ def build_messages(
         )
     else:
         parts.append("\nTake the single best next action.")
+
+    return parts
+
+
+def estimate_fixed_prompt_tokens(
+    page_state: str,
+    vision_text: str,
+    task_spec: TaskSpec,
+    sample: SampleInput,
+    snap: dom_extractor.DOMSnapshot,
+    consecutive_failures: int,
+    progress: dict | None = None,
+    accumulated: dict | None = None,
+    step_summaries: list[str] | None = None,
+    current_step: int = 0,
+    memory_hints: str | None = None,
+    effective_max: int | None = None,
+    step_tools: list[dict] | None = None,
+) -> int:
+    """Estimate fixed prompt tokens from the exact rendered non-history content."""
+    parts = _build_base_message_parts(
+        page_state=page_state,
+        vision_text=vision_text,
+        task_spec=task_spec,
+        sample=sample,
+        snap=snap,
+        consecutive_failures=consecutive_failures,
+        progress=progress,
+        accumulated=accumulated,
+        step_summaries=step_summaries,
+        current_step=current_step,
+        effective_max=effective_max,
+    )
+    system_text = "\n".join(
+        block.get("text", "")
+        for block in build_system_blocks(task_spec.system_prompt, sample, memory_hints, current_step)
+    )
+    tools_text = json.dumps(step_tools, default=str) if step_tools else ""
+    return estimate_tokens(system_text + "\n".join(parts) + tools_text)
+
+
+def build_messages(
+    page_state: str,
+    vision_text: str,
+    history: list[dict],
+    task_spec: TaskSpec,
+    sample: SampleInput,
+    snap: dom_extractor.DOMSnapshot,
+    consecutive_failures: int,
+    loop_counter: dict,
+    progress: dict | None = None,
+    accumulated: dict | None = None,
+    step_summaries: list[str] | None = None,
+    current_step: int = 0,
+    memory_hints: str | None = None,
+    effective_max: int | None = None,
+) -> list[dict]:
+    """Build the user message list for the LLM call."""
+    parts = _build_base_message_parts(
+        page_state=page_state,
+        vision_text=vision_text,
+        task_spec=task_spec,
+        sample=sample,
+        snap=snap,
+        consecutive_failures=consecutive_failures,
+        progress=progress,
+        accumulated=accumulated,
+        step_summaries=step_summaries,
+        current_step=current_step,
+        effective_max=effective_max,
+    )
+
+    if history:
+        history_lines = []
+        show_reflection = config.REFLECTION_MODE == "full"
+        # Microcompact: stale results (older than last 5) get truncated to stubs.
+        # Recent results stay full — the agent needs them for decision-making.
+        # This saves ~100 tokens per old step without losing the action trace.
+        recency_boundary = max(0, len(history) - 5)
+        for i, h in enumerate(history):
+            is_stale = i < recency_boundary
+            is_meta = h.get("is_meta", False)
+
+            # Skip meta messages (nudges, recovery prompts) — they served their purpose
+            if is_meta and is_stale:
+                continue
+
+            if is_stale:
+                # Compact stale results to short stubs
+                action = h.get("action", "")
+                if action == "screenshot":
+                    # Extract just the filename from the full result
+                    result = h.get("result", "")
+                    fname = result.split(": ")[1].split(" ")[0] if ": " in result else "screenshot"
+                    line = f"Step {h['step']}: screenshot → [{fname}]"
+                elif action == "extract":
+                    chars = h.get("result", "").split(" ")[1] if "Extracted" in h.get("result", "") else "?"
+                    line = f"Step {h['step']}: extract → [{chars} chars saved]"
+                else:
+                    line = f"Step {h['step']}: {action} → {h.get('result', '')[:50]}"
+            else:
+                # Recent results stay full
+                line = f"Step {h['step']}: {h['action']} → {h.get('result', '')[:100]}"
+
+            if show_reflection and not is_stale:
+                if h.get("memory"):
+                    line += f" [mem: {h['memory'][:60]}]"
+                if h.get("goal"):
+                    line += f" [goal: {h['goal'][:60]}]"
+            history_lines.append(line)
+        parts.append(f"\n## Action history ({len(history_lines)} items)\n" + "\n".join(history_lines))
 
     return [{"role": "user", "content": "\n".join(parts)}]

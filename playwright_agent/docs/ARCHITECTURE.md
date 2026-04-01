@@ -406,28 +406,44 @@ USER (rebuilt every turn):
   Take the single best next action.
 ```
 
-### Context Efficiency — Three-Layer Optimization
+### Context Efficiency — Four-Layer Prompt Pipeline
 
-**Layer 1: Microcompact (zero cost, runs every step)**
-Stale history entries (older than last 5 steps) are compacted to short stubs:
-- `Step 3: screenshot → [01_commit_page.png]` instead of full SHA-256 description
-- `Step 5: extract → [1432 chars saved]` instead of full extraction text
-- Meta messages (nudges, recovery prompts) older than 5 steps are dropped entirely — they served their purpose
+The prompt construction is split across `agent_prompt.py` with shared code paths ensuring the budget estimate and the actual prompt are always aligned.
 
-**Layer 2: Prompt Cache Split (saves ~30-50% input tokens)**
+**Layer 1: Prompt Cache Split (`build_system_blocks`)**
 System prompt is split into two blocks:
-- Block 1: Static task instructions → `cache_control: {type: "ephemeral"}` → cached across all steps
-- Block 2: Dynamic context (memory hints, sample metadata) → NOT cached → changes don't invalidate Block 1
+- Block 1 (CACHED): Static task instructions → `cache_control: {type: "ephemeral"}` → cached across all steps. On a 10-step run, 9 cache hits on the largest prompt part.
+- Block 2 (NOT CACHED): Dynamic context (memory hints for steps 1-3, sample metadata) → changes don't invalidate Block 1.
 
-On a 10-step run, Block 1 is sent once and cached for steps 2-10. That's 9 cache hits on the largest part of the prompt.
+Cache hits are verified via response usage telemetry: `cache_read_input_tokens` and `cache_creation_input_tokens` logged per step.
 
-**Layer 3: Budget-Fitted History (intelligent selection)**
-History is not a simple sliding window. `agent_prompt.fit_history()` scores each entry by:
+**Layer 2: Budget-Fitted History (`fit_history`)**
+History is not a sliding window. Each entry is scored by:
 - Action importance (`save_progress`/`done` = 3, `extract` = 2, `scroll` = 0)
 - Recency bonus (newer entries score higher)
 - Token cost (expensive entries deprioritized when budget is tight)
 
-Result: 5-25 history items fitted to a token budget (30% of prompt capacity), keeping the most informative steps.
+Meta messages (nudges, recovery prompts) are excluded BEFORE selection — they served their purpose and should not displace real navigation context. Recent meta (last 3 entries) is preserved in chronological position.
+
+Budget is computed from the **exact rendered prompt** via `estimate_fixed_prompt_tokens`, which calls the same `_build_base_message_parts` + `build_system_blocks` used for the real prompt. No divergence possible.
+
+Result: 5-25 history items fitted to a token budget (30% of prompt capacity, capped at 24K tokens total).
+
+**Layer 3: Microcompact (zero cost, at render time in `build_messages`)**
+Stale history entries (older than last 5 steps) are compacted to short stubs:
+- `Step 3: screenshot → [01_commit_page.png]` instead of full SHA-256 description
+- `Step 5: extract → [1432 chars saved]` instead of full extraction text
+- Stale meta messages dropped entirely
+
+Recent results (last 5) stay full — the agent needs them for decision-making.
+
+**Layer 4: Step Summaries (LLM-generated, periodic)**
+Every 10 steps, older history is summarized by the fast model (Haiku) into structured FOUND/GAPS/NEXT format. Last 3 summaries injected as "Earlier steps (condensed)". Meta messages are excluded from summaries. Mechanical fallback if LLM call fails.
+
+**Run-state capping:**
+- Progress lists (pages_visited, artifacts, failed_urls) capped at last 10 entries with total count shown
+- Accumulated checkpoint JSON truncated at 2000 chars in prompt
+- Memory hints only injected for steps 1-3 (absorbed early, not repeated)
 
 ### Action Schema — 12 Typed Actions
 
